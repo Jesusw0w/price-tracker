@@ -1,0 +1,13 @@
+{
+    "python.formatting.provider": "black",
+    "python.pythonPath": "/Users/catarinafrancoclaudio/miniconda3/bin/python",
+    "terminal.integrated.env.osx": {
+        "PYTHONPATH": "$amazon_es_gpu_price_tracker/app",
+    },
+    "terminal.integrated.env.linux": {
+        "PYTHONPATH": "$amazon_es_gpu_price_tracker/app",
+    },
+    "terminal.integrated.env.windows": {
+        "PYTHONPATH": "$amazon_es_gpu_price_tracker/app",
+    }
+}

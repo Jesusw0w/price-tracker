@@ -1,0 +1,30 @@
+{
+    "category":[
+        
+    ],
+    "gpu_links": {
+        "amd": {
+            "rx 7900 xt": [
+                "https://www.amazon.es/SAPPHIRE-RadeonTM-Gaming-Graphics-GDDR6/dp/B0BMG3FBND/ref=sr_1_1?keywords=amd+rx+7900&qid=1675452528&sr=8-1",
+                "https://www.amazon.es/XFX-Radeon-Tarjeta-gráfica-RX-79TMBABF9/dp/B0BNLSDRKB/ref=sr_1_2?keywords=amd+rx+7900&qid=1675452528&sr=8-2",
+                "https://www.amazon.es/Powercolor-Radeon-7900-Devil-GDDR6/dp/B0BMWGTNMV/ref=sr_1_13?crid=21IW60QEVEE0O&keywords=rx+7900+xt&qid=1675501926&sprefix=rx+7900+xt%2Caps%2C134&sr=8-13"
+            ]
+        },
+        "nvidia": {
+            "rtx 4070 ti": [
+                "https://www.amazon.es/ASUS-Gaming-GeForce-temperaturas-Durabilidad/dp/B0BNW6598Y/ref=sr_1_2?__mk_es_ES=ÅMÅŽÕÑ&crid=1Q0943G5LKNNW&keywords=rtx+3070+ti&qid=1675502125&sprefix=rtx+4070ti%2Caps%2C91&sr=8-2",
+                "https://www.amazon.es/MSI-NVIDIA-GeForce-4070-GAMING/dp/B0BHF15JFS/ref=sr_1_3?__mk_es_ES=ÅMÅŽÕÑ&crid=1Q0943G5LKNNW&keywords=rtx+3070+ti&qid=1675502125&sprefix=rtx+4070ti%2Caps%2C91&sr=8-3",
+                "https://www.amazon.es/ASUS-GeForce-Rendimiento-térmico-gráficos/dp/B0BNW51VHZ/ref=sr_1_4_mod_primary_new?__mk_es_ES=ÅMÅŽÕÑ&crid=1Q0943G5LKNNW&keywords=rtx+3070+ti&qid=1675502125&sbo=RZvfv%2F%2FHxDF%2BO5021pAnSA%3D%3D&sprefix=rtx+4070ti%2Caps%2C91&sr=8-4"
+            ]
+        },
+        "all": [
+            "https://www.amazon.es/SAPPHIRE-RadeonTM-Gaming-Graphics-GDDR6/dp/B0BMG3FBND/ref=sr_1_1?keywords=amd+rx+7900&qid=1675452528&sr=8-1",
+            "https://www.amazon.es/XFX-Radeon-Tarjeta-gráfica-RX-79TMBABF9/dp/B0BNLSDRKB/ref=sr_1_2?keywords=amd+rx+7900&qid=1675452528&sr=8-2",
+            "https://www.amazon.es/Powercolor-Radeon-7900-Devil-GDDR6/dp/B0BMWGTNMV/ref=sr_1_13?crid=21IW60QEVEE0O&keywords=rx+7900+xt&qid=1675501926&sprefix=rx+7900+xt%2Caps%2C134&sr=8-13",
+            "https://www.amazon.es/MSI-NVIDIA-GeForce-4070-GAMING/dp/B0BHF15JFS/ref=sr_1_3?__mk_es_ES=ÅMÅŽÕÑ&crid=1Q0943G5LKNNW&keywords=rtx+3070+ti&qid=1675502125&sprefix=rtx+4070ti%2Caps%2C91&sr=8-3",
+            "https://www.amazon.es/ASUS-GeForce-Rendimiento-térmico-gráficos/dp/B0BNW51VHZ/ref=sr_1_4_mod_primary_new?__mk_es_ES=ÅMÅŽÕÑ&crid=1Q0943G5LKNNW&keywords=rtx+3070+ti&qid=1675502125&sbo=RZvfv%2F%2FHxDF%2BO5021pAnSA%3D%3D&sprefix=rtx+4070ti%2Caps%2C91&sr=8-4",
+            "https://www.amazon.es/ASUS-Gaming-GeForce-temperaturas-Durabilidad/dp/B0BNW6598Y/ref=sr_1_2?__mk_es_ES=ÅMÅŽÕÑ&crid=1Q0943G5LKNNW&keywords=rtx+3070+ti&qid=1675502125&sprefix=rtx+4070ti%2Caps%2C91&sr=8-2"
+        ]
+    },
+    "amz_scrap_header": ""
+}
