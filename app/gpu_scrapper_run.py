@@ -1,6 +1,7 @@
 import os
 from config import config_obj
 from resources.load_data import ExtractData
+from resources.process_data import ProcessData
 
 
 def main(category: str):
@@ -14,6 +15,7 @@ def main(category: str):
 
     data = ExtractData(gpu_list=config_obj["gpu_links"]["all"], category=category, config=config_obj).bs_extraction()
 
+    processed_data = ProcessData(data)
     print(data)
 
 

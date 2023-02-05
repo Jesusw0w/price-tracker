@@ -38,4 +38,3 @@ class ExtractData:
         self.gpu_info = {f"gpu_{count}": {"price": json.loads(dic[1:-1]["priceAmount"])} for count, dic in
                          enumerate(find_prices)}
 
-        return self.gpu_info
