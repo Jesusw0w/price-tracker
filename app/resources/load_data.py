@@ -1,4 +1,5 @@
 import requests
+import json
 from bs4 import BeautifulSoup
 
 
@@ -17,7 +18,7 @@ class ExtractData:
         print("Loading data...", flush=True)
 
         # Add urls to info dict
-        {f"gpu_{count}": html.find("title").text.strip() for count, html in enumerate(self.gpu_url_list)}
+        # {f"gpu_{count}": html.find("title").text.strip() for count, html in enumerate(self.gpu_url_list)}
         # Get data from each link
         request_res = [requests.get(url, headers=self.header).text for url in self.gpu_url_list]
 
@@ -25,8 +26,16 @@ class ExtractData:
         soup = [BeautifulSoup(req) for req in request_res]
 
         # Add GPU titles to gpu_info
-        self.gpu_info = {f"gpu_{count}": html.find("title").text.strip() for count, html in enumerate(soup)}
+        self.gpu_info = {f"gpu_{count}": {"title": html.find("title").text.strip()} for count, html in enumerate(soup)}
 
-        title = [html.find("span", {"id": "productTittle"}).text.strip() for html in soup]
+        # Add Urls
+        self.gpu_info = {f"gpu_{count}": {"url": url} for count, url in enumerate(self.gpu_url_list)}
 
-        return soup
+        # Creates a list with prices with a element that has price value
+        find_prices = [
+            html.find("div", {"class": "a-section aok-hidden twister-plus-buying-options-price-data"}).text.strip() for
+            html in soup]
+        self.gpu_info = {f"gpu_{count}": {"price": json.loads(dic[1:-1]["priceAmount"])} for count, dic in
+                         enumerate(find_prices)}
+
+        return self.gpu_info
