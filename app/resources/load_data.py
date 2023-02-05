@@ -7,17 +7,26 @@ class ExtractData:
         self.gpu_url_list = gpu_list
         self.category = category
         self.config = config
-        self.header = {(config["amz_header"]["firefox"])}
+        self.header = {'User-Agent': ('Mozilla/5.0 (X11; Linux x86_64)'
+                                      'AppleWebKit/537.36 (KHTML, like Gecko)'
+                                      'Chrome/44.0.2403.157 Safari/537.36'),
+                       'Accept-Language': 'en-US, en;q=0.5'}
+        self.gpu_info = {}
 
     def bs_extraction(self):
         print("Loading data...", flush=True)
 
-        # Set to url all links provided in gpu list selected
-        gpu_url_list = [url.url for gpu in self.gpu_url_list[self.category] for url in gpu]
-
+        # Add urls to info dict
+        {f"gpu_{count}": html.find("title").text.strip() for count, html in enumerate(self.gpu_url_list)}
         # Get data from each link
-        request_res = [requests.get(url, headers=self.header) for url in gpu_url_list]
+        request_res = [requests.get(url, headers=self.header).text for url in self.gpu_url_list]
 
-        soup = [BeautifulSoup(req.content, feature="lxml") for req in request_res]
+        # BS the html received from request
+        soup = [BeautifulSoup(req) for req in request_res]
+
+        # Add GPU titles to gpu_info
+        self.gpu_info = {f"gpu_{count}": html.find("title").text.strip() for count, html in enumerate(soup)}
+
+        title = [html.find("span", {"id": "productTittle"}).text.strip() for html in soup]
 
         return soup
