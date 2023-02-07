@@ -15,8 +15,11 @@ def main(category: str):
 
     data = ExtractData(gpu_list=config_obj["gpu_links"]["all"], category=category, config=config_obj).bs_extraction()
 
-    processed_data = ProcessData(data)
-    print(data)
+    processed_data = ProcessData(raw_data=data["gpu_raw_data"], url_list=data["url_list"])
+
+    gpu_dictionary = processed_data.format_and_organize_soup()
+
+    print(gpu_dictionary)
 
 
 if __name__ == "__main__":
