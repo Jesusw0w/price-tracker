@@ -17,7 +17,9 @@ def main(category: str):
 
     processed_data = ProcessData(raw_data=data["gpu_raw_data"], url_list=data["url_list"])
 
-    gpu_dictionary = processed_data.format_and_organize_soup()
+    gpu_dictionary = processed_data.format_and_organize_soup().data_to_df()
+
+    gpu_df_list = processed_data.data_to_df()
 
     print(gpu_dictionary)
 

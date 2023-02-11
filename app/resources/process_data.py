@@ -1,3 +1,4 @@
+import datetime
 import json
 import pandas as pd
 
@@ -7,23 +8,17 @@ class ProcessData:
         self.raw_data = raw_data
         self.url_list = url_list
         self.gpu_info = {}
+        self.processed_data = pd.DataFrame()
 
-    def format_and_organize_soup(self):
-        print("Formatting and organizing data...")
+    def create_gpu_df(self):
+        print("Formatting and organizing data...", flush=True)
 
-        # Add GPU titles to gpu_info
-        self.gpu_info = {f"gpu_{count}": {"title": html.find("title").text.strip()} for count, html in
-                         enumerate(self.raw_data)}
+        # Create column with GPU Names
+        self.processed_data["GPU"] = [html.find("title").text.strip() for html in self.raw_data]
 
-        # Add Urls
-        self.gpu_info = {f"gpu_{count}": {"url": url} for count, url in enumerate(self.url_list)}
+        # Create column with URL Names
+        self.processed_data["URL"] = [url for url in self.url_list]
 
-        test = [
-            json.dumps(
-                html.find("div",
-                          {"class": "a-section aok-hidden twister-plus-buying-options-price-data"}).text.strip())
-            for
-            html in self.raw_data]
         # Creates a list with prices with a element that has price value
         find_prices = [
             json.loads(
@@ -31,13 +26,16 @@ class ProcessData:
                           {"class": "a-section aok-hidden twister-plus-buying-options-price-data"}).text.strip())
             for
             html in self.raw_data]
-        # This step may be avoided if we convert json to dataframe . Check tomorrow
-        lists_to_dict = [data[0] for count, data in enumerate(find_prices)]
 
-        to_df = pd.DataFrame.from_dict(data=lists_to_dict[0], orient="index")
+        # Create new column with the prices
+        self.processed_data["Price"] = [dic[0]["priceAmount"] for dic in find_prices]
 
-        self.gpu_info = {f"gpu_{count}": {"price": json.loads(dic["priceAmount"])} for count, dic in
-                         enumerate(find_prices)}
+        # Associate extraction date to each row
+        self.processed_data["Date"] = [pd.to_datetime(datetime.date.today()) for i in
+                                       self.processed_data.index]
 
-    def data_to_df(self):
-        gpus_df = [pd.DataFrame(dic) for dic in self.gpu_info]
+        return self.processed_data
+
+
+
+
