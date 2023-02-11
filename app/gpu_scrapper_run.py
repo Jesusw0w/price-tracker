@@ -1,7 +1,7 @@
-import os
 from config import config_obj
 from resources.load_data import ExtractData
 from resources.process_data import ProcessData
+from resources import save_data
 
 
 def main(category: str):
@@ -13,15 +13,22 @@ def main(category: str):
     if category == "":
         category = "all"
 
-    data = ExtractData(gpu_list=config_obj["gpu_links"]["all"], category=category, config=config_obj).bs_extraction()
+    extract_data = ExtractData(gpu_list=config_obj["gpu_links"]["all"], category=category, config=config_obj)
 
-    processed_data = ProcessData(raw_data=data["gpu_raw_data"], url_list=data["url_list"])
+    # Extract amazon gpu webpages HTML for each of the gpu links provided
+    raw_data = extract_data.bs_extraction()
 
-    gpu_dictionary = processed_data.format_and_organize_soup().data_to_df()
+    # Extract data stored in a CSV file with all existing historical data
+    historical_data = extract_data.load_historical_data()
 
-    gpu_df_list = processed_data.data_to_df()
+    processed_data = ProcessData(raw_data=raw_data["gpu_raw_data"], url_list=raw_data["url_list"],
+                                 historical_data=historical_data)
 
-    print(gpu_dictionary)
+    processed_data.create_gpu_df()
+
+    gpu_data = processed_data.concat_historical_data()
+
+    save_data.write_csv(df=gpu_data)
 
 
 if __name__ == "__main__":

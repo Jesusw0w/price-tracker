@@ -1,5 +1,8 @@
 import requests
+import pandas as pd
+
 from bs4 import BeautifulSoup
+from app.config import historical_data_path
 
 
 class ExtractData:
@@ -11,7 +14,6 @@ class ExtractData:
                                       'AppleWebKit/537.36 (KHTML, like Gecko)'
                                       'Chrome/44.0.2403.157 Safari/537.36'),
                        'Accept-Language': 'en-US, en;q=0.5'}
-        # self.raw_data = []
 
     def bs_extraction(self):
         """
@@ -31,3 +33,9 @@ class ExtractData:
         raw_data = {"url_list": self.gpu_url_list, "gpu_raw_data": amz_raw_data}
 
         return raw_data
+
+    def load_historical_data(self):
+        """
+        Loads historical data saved locally in users computer (To be adapted with a scheduled job to update every day
+        """
+        return pd.read_csv(historical_data_path, sep="|")

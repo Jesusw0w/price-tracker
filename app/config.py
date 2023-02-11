@@ -10,3 +10,6 @@ views_dir = os.path.join(app_dir, "views")
 
 # Load json file
 config_obj = json.load(open(os.path.join(static_dir, "config.json")))
+
+# Historical Data Path
+historical_data_path = os.path.join(data_dir, "gpu_data.csv")
