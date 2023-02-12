@@ -10,6 +10,14 @@ class ProcessData:
         self.url_list = url_list
         self.gpu_info = {}
         self.processed_data = pd.DataFrame()
+    @staticmethod
+    def check_prices(x):
+        try:
+            return json.loads(
+                x.find("div",
+                          {"class": "a-section aok-hidden twister-plus-buying-options-price-data"}).text.strip())
+        except AttributeError:
+            pass
 
     def create_gpu_df(self):
         print("Creating Dataframe...", flush=True)
@@ -21,12 +29,7 @@ class ProcessData:
         self.processed_data["URL"] = [url for url in self.url_list]
 
         # Creates a list with prices with a element that has price value
-        find_prices = [
-            json.loads(
-                html.find("div",
-                          {"class": "a-section aok-hidden twister-plus-buying-options-price-data"}).text.strip())
-            for
-            html in self.raw_data]
+        find_prices = [self.check_prices(html) for html in self.raw_data]
 
         # Create new column with the prices
         self.processed_data["Price"] = [dic[0]["priceAmount"] for dic in find_prices]
