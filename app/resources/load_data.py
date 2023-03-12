@@ -21,10 +21,11 @@ class ExtractData:
         """
         print("Loading data...", flush=True)
 
-        # Add urls to info dict
-        # {f"gpu_{count}": html.find("title").text.strip() for count, html in enumerate(self.gpu_url_list)}
+        # Verify if all urls in the list are valid and retrieve a list with all valid links
+        gpu_list = self.valid_urls(urls=self.gpu_url_list, header=self.header)
+
         # Get data from each link
-        request_res = [requests.get(url, headers=self.header).text for url in self.gpu_url_list]
+        request_res = [requests.get(url, headers=self.header).text for url in gpu_list]
 
         # BS the html received from request
         amz_raw_data = [BeautifulSoup(req) for req in request_res]
@@ -34,8 +35,13 @@ class ExtractData:
 
         return raw_data
 
-    def load_historical_data(self):
+    @staticmethod
+    def load_historical_data():
         """
         Loads historical data saved locally in users computer (To be adapted with a scheduled job to update every day
         """
         return pd.read_csv(historical_data_path, sep="|")
+
+    @staticmethod
+    def valid_urls(urls: list, header: dict):
+        return [url for url in urls if requests.get(url, headers=header).status_code == 200]

@@ -1,6 +1,7 @@
 from config import config_obj
 from resources.load_data import ExtractData
 from resources.process_data import ProcessData
+from resources.plots import Plot
 from resources import save_data
 
 
@@ -29,6 +30,9 @@ def main(category: str):
     gpu_data = processed_data.concat_historical_data()
 
     save_data.write_csv(df=gpu_data)
+
+    price_history = Plot(df=gpu_data, x="Date", y="Price", legend="GPU").linear_plot()
+    print("Data Saved", flush=True)
 
 
 if __name__ == "__main__":

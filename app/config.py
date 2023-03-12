@@ -7,6 +7,7 @@ resources_dir = os.path.join(app_dir, "resources")
 data_dir = os.path.join(app_dir, "data")
 static_dir = os.path.join(data_dir, "static")
 views_dir = os.path.join(app_dir, "views")
+temp_dir = os.path.join(data_dir,"temp")
 
 # Load json file
 config_obj = json.load(open(os.path.join(static_dir, "config.json")))
