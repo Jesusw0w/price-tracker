@@ -2,6 +2,8 @@ import datetime
 import json
 import pandas as pd
 
+from app.config import config_obj
+
 
 class ProcessData:
     def __init__(self, raw_data: list, url_list: list, historical_data: pd.DataFrame):
@@ -14,8 +16,9 @@ class ProcessData:
     def create_gpu_df(self):
         print("Creating Dataframe...", flush=True)
 
-        # Create column with GPU Names
-        self.processed_data["GPU"] = [html.find("title").text.strip() for html in self.raw_data]
+        # Create column with GPU Names removing Amazon category suffix
+        self.processed_data["GPU"] = [(html.find("title").text.strip().replace(": Amazon.es: Informática", "")) for html
+                                      in self.raw_data]
 
         # Create column with URL Names
         self.processed_data["URL"] = [url for url in self.url_list]
@@ -34,7 +37,7 @@ class ProcessData:
         """
         Concatenates newly extracted data to the existing one in the CSV file from previous runs.
         """
-        complete_data = pd.concat([self.historical_data, self.processed_data])
+        complete_data = pd.concat([self.historical_data, self.processed_data]).replace(config_obj["AMZ Category"], "")
 
         complete_data.drop_duplicates(inplace=True)
 
