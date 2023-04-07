@@ -31,7 +31,10 @@ def main(category: str):
 
     save_data.write_csv(df=gpu_data)
 
-    price_history = Plot(df=gpu_data, x="Date", y="Price", legend="GPU").linear_plot()
+    price_history = Plot(df=gpu_data, x="Date", y="Price", legend="GPU", title='Amazon Es GPU Price History')
+
+    price_history.linear_plot()
+
     print("Data Saved", flush=True)
 
 

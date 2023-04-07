@@ -16,12 +16,12 @@ class ProcessData:
     def create_gpu_df(self):
         print("Creating Dataframe...", flush=True)
 
+        # Create column with URL Names
+        self.processed_data["URL"] = [url for url in self.url_list]
+
         # Create column with GPU Names removing Amazon category suffix
         self.processed_data["GPU"] = [(html.find("title").text.strip().replace(": Amazon.es: Informática", "")) for html
                                       in self.raw_data]
-
-        # Create column with URL Names
-        self.processed_data["URL"] = [url for url in self.url_list]
 
         # Creates a list with prices with an element that has price value
         find_prices = [self.check_prices(html) for html in self.raw_data]
