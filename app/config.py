@@ -1,18 +1,6 @@
-import os
-import json
+from pathlib import Path
 
-# Directory list
-app_dir = os.path.dirname(os.path.abspath(__file__))
-resources_dir = os.path.join(app_dir, "resources")
-data_dir = os.path.join(app_dir, "data")
-views_dir = os.path.join(app_dir, "views")
-template_dir = os.path.join(app_dir, "templates")
-static_dir = os.path.join(data_dir, "static")
-temp_dir = os.path.join(data_dir, "temp")
+data_dir = Path(__file__).parent / "data"
 
-
-# Load json file
-config_obj = json.load(open(os.path.join(static_dir, "config.json")))
-
-# Historical Data Path
-historical_data_path = os.path.join(data_dir, "gpu_data.csv")
+historical_data_path = data_dir / "gpu_data.csv"
+tracked_path = data_dir / "tracked.json"

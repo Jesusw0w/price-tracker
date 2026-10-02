@@ -1,0 +1,84 @@
+[project]
+name = "gpu-price-tracker"
+version = "0.1.0"
+description = "Amazon.es GPU price tracker"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi[standard]>=0.142",
+    "pandas>=3.0",
+    "beautifulsoup4>=4.15",
+    "requests>=2.34",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.1",
+    "ruff>=0.16",
+    "mypy>=2.4",
+    "nox>=2026.8",
+    "pandas-stubs>=3.0",
+    "types-requests>=2.33",
+]
+
+[build-system]
+requires = ["uv_build>=0.9,<0.13"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "app"
+module-root = ""
+
+[tool.fastapi]
+entrypoint = "app.gpu_app:app"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+
+[tool.ruff]
+target-version = "py314"
+line-length = 88
+src = ["app", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # isort
+    "UP",       # pyupgrade
+    "B",        # bugbear
+    "SIM",      # simplify
+    "C4",       # comprehensions
+    "ANN",      # missing annotations
+    "D",        # pydocstyle
+    "RUF",      # ruff-specific
+    "S",        # bandit security checks
+    "PTH",      # prefer pathlib over os.path
+    "TID",      # tidy imports
+    "A",        # builtin shadowing
+]
+ignore = [
+    "D203",  # conflicts with D211
+    "D213",  # conflicts with D212
+    "D1",    # missing docstrings: names should say it, docstrings only for contracts
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]  # assert is the point of a test
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "tests"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.14"
+strict = true
+warn_unreachable = true
+show_error_codes = true
+pretty = true

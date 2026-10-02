@@ -1,0 +1,28 @@
+<aside class="glass">
+  <app-sidebar />
+</aside>
+
+<main>
+  <header class="toolbar">
+    <h1>Price history</h1>
+    <div class="ranges" role="group" aria-label="Date range">
+      @for (range of ranges; track range.label) {
+        <button type="button" [attr.aria-pressed]="store.range() === range" (click)="store.range.set(range)">
+          {{ range.label }}
+        </button>
+      }
+    </div>
+  </header>
+
+  @if (store.loadError()) {
+    <p class="banner" role="alert">Can't reach the API. Is <code>uv run fastapi dev</code> running?</p>
+  }
+
+  <section class="card">
+    <app-price-chart [series]="series()" />
+  </section>
+
+  <section class="card">
+    <app-price-table />
+  </section>
+</main>

@@ -1,0 +1,189 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.logo {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--steel), var(--link));
+  box-shadow: 0 4px 16px rgb(66 139 202 / 0.35);
+}
+
+.title {
+  margin: 0;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.subtitle {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.add > label,
+h2 {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+.add .row {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+#link {
+  flex: 1;
+  min-width: 0;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgb(13 18 21 / 0.55);
+  color: var(--ink);
+  font: inherit;
+}
+
+#link::placeholder {
+  color: var(--muted);
+}
+
+#link[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+button[type='submit'] {
+  padding: 0.55rem 1rem;
+  border: 0;
+  border-radius: 8px;
+  background: var(--steel);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button[type='submit']:hover:not(:disabled) {
+  background: #6d889b;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.help {
+  margin: 0.4rem 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.help.error {
+  color: var(--danger);
+}
+
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.count {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 8px;
+}
+
+li:hover {
+  background: rgb(203 213 219 / 0.06);
+}
+
+li label {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+  cursor: pointer;
+}
+
+li input {
+  accent-color: var(--steel);
+}
+
+.key {
+  flex: none;
+  width: 14px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--border);
+}
+
+.name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.875rem;
+  color: var(--ink-2);
+}
+
+li.charted .name {
+  color: var(--ink);
+}
+
+.price {
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.remove {
+  flex: none;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.remove:hover,
+.remove:focus-visible {
+  background: rgb(230 103 103 / 0.15);
+  color: var(--danger);
+}
+
+.empty {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
