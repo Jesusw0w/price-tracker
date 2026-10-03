@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import FastAPI, HTTPException, Path, Response, status
+from fastapi import APIRouter, HTTPException, Path, Response, status
 from pydantic import BaseModel
 
 from app.products import (
@@ -11,7 +11,7 @@ from app.products import (
     save_tracked,
 )
 
-app = FastAPI(title="GPU Price Tracker")
+router = APIRouter(prefix="/api/products", tags=["products"])
 
 Asin = Annotated[str, Path(pattern=r"^[A-Z0-9]{10}$")]
 
@@ -20,13 +20,19 @@ class NewProduct(BaseModel):
     link: str  # Amazon product URL or bare ASIN
 
 
-@app.get("/api/products")
+@router.get("")
 def list_products() -> list[Product]:
+    """List tracked products with their price history."""
     return load_products(load_tracked())
 
 
-@app.post("/api/products", status_code=status.HTTP_201_CREATED)
+@router.post("", status_code=status.HTTP_201_CREATED)
 def track_product(body: NewProduct) -> Product:
+    """Start tracking a product.
+
+    \f
+    :raises HTTPException: 422 if the link has no ASIN, 409 if already tracked.
+    """
     asin = parse_asin(body.link)
     if asin is None:
         raise HTTPException(
@@ -40,8 +46,13 @@ def track_product(body: NewProduct) -> Product:
     return load_products([asin])[0]
 
 
-@app.delete("/api/products/{asin}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{asin}", status_code=status.HTTP_204_NO_CONTENT)
 def untrack_product(asin: Asin) -> Response:
+    """Stop tracking a product. Its price history is kept.
+
+    \f
+    :raises HTTPException: 404 if not tracked.
+    """
     tracked = load_tracked()
     if asin not in tracked:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Product not tracked")

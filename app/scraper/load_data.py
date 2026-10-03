@@ -1,15 +1,17 @@
+import logging
 from typing import TypedDict
 
-import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 
-from app.config import historical_data_path
-
 TIMEOUT_S = 30
+
+log = logging.getLogger(__name__)
 
 
 class RawData(TypedDict):
+    """``url_list[i]`` is the URL of ``gpu_raw_data[i]``."""
+
     url_list: list[str]
     gpu_raw_data: list[BeautifulSoup]
 
@@ -27,7 +29,8 @@ class ExtractData:
         }
 
     def bs_extraction(self) -> RawData:
-        print("Loading data...", flush=True)
+        """Fetch and parse every page that answers HTTP 200."""
+        log.info("Fetching %d product pages", len(self.gpu_url_list))
 
         gpu_list = self.valid_urls(urls=self.gpu_url_list, header=self.header)
 
@@ -42,13 +45,12 @@ class ExtractData:
         return {"url_list": gpu_list, "gpu_raw_data": amz_raw_data}
 
     @staticmethod
-    def load_historical_data() -> pd.DataFrame:
-        return pd.read_csv(historical_data_path, sep="|")
-
-    @staticmethod
     def valid_urls(urls: list[str], header: dict[str, str]) -> list[str]:
-        return [
-            url
-            for url in urls
-            if requests.get(url, headers=header, timeout=TIMEOUT_S).status_code == 200
-        ]
+        valid = []
+        for url in urls:
+            status = requests.get(url, headers=header, timeout=TIMEOUT_S).status_code
+            if status == 200:
+                valid.append(url)
+            else:
+                log.warning("Skipping %s: HTTP %d", url, status)
+        return valid

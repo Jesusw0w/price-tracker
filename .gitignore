@@ -9,6 +9,8 @@ __pycache__/
 # VsCode
 *.DS_Store
 *.iml
+.idea/
+.vscode/settings.json
 *.xml
 
 # Distribution / packaging
@@ -134,4 +136,8 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
+.drafts/
 
+# Scraped data and the tracked list are per-install, never committed
+app/data/*
+!app/data/.gitkeep

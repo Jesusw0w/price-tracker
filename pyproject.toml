@@ -3,9 +3,12 @@ name = "gpu-price-tracker"
 version = "0.1.0"
 description = "Amazon.es GPU price tracker"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.14"
 dependencies = [
     "fastapi[standard]>=0.142",
+    "pydantic-settings>=2.15",
     "pandas>=3.0",
     "beautifulsoup4>=4.15",
     "requests>=2.34",
@@ -30,7 +33,7 @@ module-name = "app"
 module-root = ""
 
 [tool.fastapi]
-entrypoint = "app.gpu_app:app"
+entrypoint = "app.main:app"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -66,6 +69,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S101"]  # assert is the point of a test
+"app/routers/*" = ["D301"]  # \f must be a real form feed: FastAPI cuts OpenAPI docs there
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

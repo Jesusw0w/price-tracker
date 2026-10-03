@@ -504,6 +504,7 @@ dependencies = [
     { name = "beautifulsoup4" },
     { name = "fastapi", extra = ["standard"] },
     { name = "pandas" },
+    { name = "pydantic-settings" },
     { name = "requests" },
 ]
 
@@ -525,6 +526,7 @@ requires-dist = [
     { name = "nox", marker = "extra == 'dev'", specifier = ">=2026.8" },
     { name = "pandas", specifier = ">=3.0" },
     { name = "pandas-stubs", marker = "extra == 'dev'", specifier = ">=3.0" },
+    { name = "pydantic-settings", specifier = ">=2.15" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.1" },
     { name = "requests", specifier = ">=2.34" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.16" },

@@ -1,5 +1,22 @@
-import { afterRenderEffect, Component, DestroyRef, ElementRef, inject, input, viewChild } from '@angular/core';
-import { Chart, LinearScale, LineController, LineElement, PointElement, Tooltip, type Plugin } from 'chart.js';
+import {
+  afterRenderEffect,
+  Component,
+  DestroyRef,
+  ElementRef,
+  inject,
+  input,
+  viewChild,
+} from '@angular/core';
+import {
+  Chart,
+  LinearScale,
+  LineController,
+  LineElement,
+  PointElement,
+  Tooltip,
+  type ChartDataset,
+  type Plugin,
+} from 'chart.js';
 import { eur } from '../products';
 
 Chart.register(LineController, LineElement, PointElement, LinearScale, Tooltip);
@@ -10,12 +27,64 @@ export interface Series {
   points: { x: number; y: number }[];
 }
 
+type LineDataset = ChartDataset<'line', { x: number; y: number }[]>;
+
 const SURFACE = '#151b20';
 const GRID = '#222b31';
 const MUTED = '#8a9aa6';
 
 const shortDate = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' });
-const longDate = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+const longDate = new Intl.DateTimeFormat('en-GB', {
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+});
+
+const DRAW_MS = 900;
+const ERASE_MS = 300;
+
+interface Wipe {
+  start: number;
+  ms: number;
+  drawing: boolean;
+}
+const wipes = new WeakMap<object, Wipe>();
+
+function shownFraction(ds: object, now: number): number {
+  const wipe = wipes.get(ds);
+  if (!wipe) return 1;
+  const t = Math.min((now - wipe.start) / wipe.ms, 1);
+  return wipe.drawing ? t : 1 - t;
+}
+
+// Turning around mid-wipe continues from the current edge instead of jumping.
+function steer(ds: object, drawing: boolean, now: number): void {
+  if ((wipes.get(ds)?.drawing ?? true) === drawing) return;
+  const shown = shownFraction(ds, now);
+  const ms = drawing ? DRAW_MS : ERASE_MS;
+  wipes.set(ds, { start: now - (drawing ? shown : 1 - shown) * ms, ms, drawing });
+}
+
+const reveal: Plugin<'line'> = {
+  id: 'reveal',
+  beforeDatasetDraw(chart, { index }) {
+    const ds = chart.data.datasets[index];
+    if (!wipes.has(ds)) return;
+    const { ctx, chartArea } = chart;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(
+      0,
+      0,
+      chartArea.left + chartArea.width * shownFraction(ds, performance.now()),
+      chart.height,
+    );
+    ctx.clip();
+  },
+  afterDatasetDraw(chart, { index }) {
+    if (wipes.has(chart.data.datasets[index])) chart.ctx.restore();
+  },
+};
 
 const crosshair: Plugin<'line'> = {
   id: 'crosshair',
@@ -44,7 +113,10 @@ const crosshair: Plugin<'line'> = {
     </div>
     <ul class="legend" aria-label="Legend">
       @for (s of series(); track s.label) {
-        <li><span class="key" [style.background]="s.color"></span><span class="label">{{ s.label }}</span></li>
+        <li>
+          <span class="key" [style.background]="s.color"></span
+          ><span class="label">{{ s.label }}</span>
+        </li>
       }
     </ul>
   `,
@@ -105,29 +177,28 @@ export class PriceChart {
     let chart: Chart<'line', { x: number; y: number }[]> | undefined;
     const reduceMotion = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
+    let frame = 0;
+
+    const tick = () => {
+      if (!chart) return;
+      const now = performance.now();
+      const before = chart.data.datasets.length;
+      chart.data.datasets = chart.data.datasets.filter((ds) => {
+        const wipe = wipes.get(ds);
+        if (!wipe || now - wipe.start < wipe.ms) return true;
+        wipes.delete(ds);
+        return wipe.drawing;
+      });
+      if (chart.data.datasets.length < before) chart.update();
+      else chart.draw();
+      frame = chart.data.datasets.some((ds) => wipes.has(ds)) ? requestAnimationFrame(tick) : 0;
+    };
+
     afterRenderEffect(() => {
-      const datasets = this.series().map((s) => ({
-        label: s.label,
-        data: s.points,
-        borderColor: s.color,
-        backgroundColor: s.color,
-        borderWidth: 2,
-        pointRadius: 0,
-        pointHoverRadius: 5,
-        pointHoverBorderWidth: 2,
-        pointHoverBorderColor: SURFACE,
-      }));
-
-      if (chart) {
-        chart.data.datasets = datasets;
-        chart.update();
-        return;
-      }
-
-      chart = new Chart(this.canvas().nativeElement, {
+      chart ??= new Chart(this.canvas().nativeElement, {
         type: 'line',
-        data: { datasets },
-        plugins: [crosshair],
+        data: { datasets: [] },
+        plugins: [reveal, crosshair],
         options: {
           maintainAspectRatio: false,
           animation: reduceMotion ? false : { duration: 300 },
@@ -138,7 +209,11 @@ export class PriceChart {
               type: 'linear',
               grid: { color: GRID },
               border: { color: GRID },
-              ticks: { color: MUTED, maxTicksLimit: 8, callback: (v) => shortDate.format(Number(v)) },
+              ticks: {
+                color: MUTED,
+                maxTicksLimit: 8,
+                callback: (v) => shortDate.format(Number(v)),
+              },
             },
             y: {
               grid: { color: GRID },
@@ -165,8 +240,51 @@ export class PriceChart {
           },
         },
       });
+
+      const now = performance.now();
+      const leaving = new Map(chart.data.datasets.map((ds) => [ds.label, ds]));
+      const fresh: LineDataset[] = [];
+      const datasets = this.series().map((s) => {
+        let ds = leaving.get(s.label);
+        leaving.delete(s.label);
+        if (ds) {
+          if (!reduceMotion) steer(ds, true, now);
+        } else {
+          // Skips Chart.js's grow-from-baseline intro so the wipe is the only entrance.
+          ds = {
+            label: s.label,
+            data: [],
+            borderWidth: 2,
+            pointRadius: 0,
+            pointHoverRadius: 5,
+            pointHoverBorderWidth: 2,
+            pointHoverBorderColor: SURFACE,
+            animation: false,
+          };
+          fresh.push(ds);
+          if (!reduceMotion) wipes.set(ds, { start: now, ms: DRAW_MS, drawing: true });
+        }
+        ds.data = s.points;
+        ds.borderColor = ds.backgroundColor = s.color;
+        return ds;
+      });
+      if (!reduceMotion) {
+        for (const ds of leaving.values()) {
+          steer(ds, false, now);
+          datasets.push(ds);
+        }
+      }
+
+      chart.data.datasets = datasets;
+      chart.update();
+      for (const ds of fresh) delete ds.animation;
+      cancelAnimationFrame(frame);
+      tick();
     });
 
-    inject(DestroyRef).onDestroy(() => chart?.destroy());
+    inject(DestroyRef).onDestroy(() => {
+      cancelAnimationFrame(frame);
+      chart?.destroy();
+    });
   }
 }

@@ -1,11 +1,14 @@
 import datetime
 import json
+import logging
 from typing import Any
 
 import pandas as pd
 from bs4 import BeautifulSoup
 
 PRICE_DATA_CLASS = "a-section aok-hidden twister-plus-buying-options-price-data"
+
+log = logging.getLogger(__name__)
 
 
 class ProcessData:
@@ -21,8 +24,7 @@ class ProcessData:
         self.processed_data = pd.DataFrame()
 
     def create_gpu_df(self) -> None:
-        print("Creating Dataframe...", flush=True)
-
+        """Build today's rows; a missing name or price becomes ``"N/A"``."""
         self.processed_data["URL"] = self.url_list
 
         self.processed_data["GPU"] = [
@@ -42,18 +44,20 @@ class ProcessData:
         self.processed_data["Date"] = datetime.date.today().isoformat()
 
     def concat_historical_data(self) -> pd.DataFrame:
-        """Append this run's rows to the CSV history, dropping exact duplicates."""
+        """Return the history plus today's rows, minus exact duplicates."""
         complete_data = pd.concat([self.historical_data, self.processed_data])
 
         return complete_data.drop_duplicates()
 
     @staticmethod
     def check_prices(html: BeautifulSoup) -> Any:  # noqa: ANN401  # raw Amazon JSON
+        """Amazon's embedded price JSON, or ``None`` if missing or malformed."""
         price_data = html.find("div", {"class": PRICE_DATA_CLASS})
         if price_data is None:
+            log.warning("No price data on %s", html.title)
             return None
         try:
             return json.loads(price_data.text.strip())
         except json.JSONDecodeError:
-            print(f"Price data not readable for {html.title}")
+            log.warning("Price data not readable for %s", html.title)
             return None

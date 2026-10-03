@@ -1,6 +1,18 @@
 from pathlib import Path
 
-data_dir = Path(__file__).parent / "data"
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
-historical_data_path = data_dir / "gpu_data.csv"
-tracked_path = data_dir / "tracked.json"
+_root = Path(__file__).parent.parent
+
+
+class Settings(BaseSettings):
+    # Real env vars win over .env, so Lambda config needs no file
+    model_config = SettingsConfigDict(env_file=_root / ".env", env_prefix="PT_")
+
+    data_dir: Path = _root / "app" / "data"
+
+
+settings = Settings()
+
+historical_data_path = settings.data_dir / "gpu_data.csv"
+tracked_path = settings.data_dir / "tracked.json"

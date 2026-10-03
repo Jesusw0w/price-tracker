@@ -5,6 +5,7 @@ Price tracker for Amazon items, currently there is only data on graphical proces
 
 ```bash
 uv sync --extra dev
+cp .env.example .env                  # optional, settings are read from env vars or .env
 uv run fastapi dev                    # API on http://localhost:8000, docs at /docs
 uv run python -m app.scraper.run      # scrape tracked products into app/data/gpu_data.csv
 uv run nox                            # ruff check + format --check, mypy --strict, pytest

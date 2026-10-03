@@ -1,22 +1,21 @@
 {
-    // Use IntelliSense to learn about possible attributes.
-    // Hover to view descriptions of existing attributes.
-    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python: Module",
-            "type": "python",
+            "name": "API (fastapi dev)",
+            "type": "debugpy",
             "request": "launch",
-            "module": "run_scrapper"
+            "module": "fastapi",
+            "args": ["dev"],
+            "cwd": "${workspaceFolder}"
         },
         {
-            "name": "Python: Current File",
-            "type": "python",
+            "name": "Scraper",
+            "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/app/run_scrapper.py",
-            "console": "integratedTerminal",
-            "cwd": "${fileDirname}"
+            "module": "app.scraper.run",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal"
         }
     ]
 }
