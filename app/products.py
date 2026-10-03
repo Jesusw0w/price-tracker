@@ -29,7 +29,6 @@ def parse_asin(link: str) -> str | None:
 
 
 def product_url(asin: str) -> str:
-    # Rebuilt from the ASIN so user input never decides which host the scraper hits
     return f"https://www.amazon.es/dp/{asin}"
 
 
@@ -41,7 +40,7 @@ def load_tracked() -> list[str]:
 
 
 def save_tracked(asins: list[str]) -> None:
-    # ponytail: single-writer JSON file, move to a real store with the Lambda migration
+    # single-writer JSON file, move to a real store with the Lambda migration
     tracked_path.parent.mkdir(parents=True, exist_ok=True)
     tracked_path.write_text(json.dumps(asins, indent=2) + "\n", encoding="utf-8")
 
@@ -61,7 +60,6 @@ def load_history() -> pd.DataFrame:
             {
                 "asin": df["URL"].str.extract(r"/dp/([A-Z0-9]{10})")[0],
                 "name": df["GPU"].str.strip(),
-                # Older runs wrote timestamps, newer ones plain dates
                 "date": pd.to_datetime(df["Date"], format="mixed").dt.date,
                 "price": pd.to_numeric(df["Price"], errors="coerce"),
             }
