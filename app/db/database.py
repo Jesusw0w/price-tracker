@@ -9,11 +9,8 @@ from app.config import settings
 
 engine = create_engine(
     settings.database_url,
-    # Supabase's pooler drops idle connections; ping before reuse, not mid-request
     pool_pre_ping=True,
-    # Transaction pooler hands each transaction a different backend, so a statement
-    # psycopg prepared on one is missing on the next
-    connect_args={"prepare_threshold": None},
+    connect_args={"prepare_threshold": None, "connect_timeout": 5},
 )
 SessionLocal = sessionmaker(engine)
 

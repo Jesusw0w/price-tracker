@@ -6,6 +6,7 @@ import pytest
 from bs4 import BeautifulSoup
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
@@ -126,6 +127,24 @@ def test_rescrape_same_day_overwrites_and_missing_price_is_skipped(
     prices = session.scalars(select(PriceRow)).all()
     assert [(p.date, p.price_cents) for p in prices] == [(DAY, 99000)]
     assert session.get_one(ProductRow, TRACKED).name == "RX 7900 XT"
+
+
+def test_liveness_needs_no_database() -> None:
+    assert TestClient(create_app()).get("/health").json() == {"status": "ok"}
+
+
+def test_readiness_reports_database_reachability(
+    client: TestClient, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert client.get("/health/ready").json() == {"status": "ok"}
+
+    def down(*_: object) -> None:
+        raise OperationalError("SELECT 1", {}, Exception("connection refused"))
+
+    monkeypatch.setattr(session, "execute", down)
+    response = client.get("/health/ready")
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Database unreachable"}
 
 
 def test_calls_are_logged_with_their_request_id(
