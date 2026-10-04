@@ -1,9 +1,20 @@
-import pandas as pd
+import datetime
 
-from app.config import historical_data_path
+from sqlalchemy.orm import Session
+
+from app.db.models import PriceRow, ProductRow
+from app.scraper.process_data import Scraped
 
 
-def write_csv(df: pd.DataFrame) -> None:
-    historical_data_path.parent.mkdir(parents=True, exist_ok=True)
-    # Pipe separator: Spanish prices may arrive with comma decimals
-    df.to_csv(historical_data_path, sep="|", index=False)
+def save(session: Session, scraped: list[Scraped], day: datetime.date) -> None:
+    """Store one price per product for ``day``; a re-scrape that day overwrites it."""
+    for page in scraped:
+        if page.name:
+            session.get_one(ProductRow, page.asin).name = page.name
+        if page.price_cents is not None:
+            # merge is SELECT then INSERT/UPDATE, safe for one writer only
+            # use INSERT ... ON CONFLICT if scrapes ever overlap
+            session.merge(
+                PriceRow(asin=page.asin, date=day, price_cents=page.price_cents)
+            )
+    session.commit()

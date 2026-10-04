@@ -1,39 +1,41 @@
+import datetime
 import logging
 import sys
 
+from sqlalchemy import select
+
+from app.db.database import SessionLocal
+from app.db.models import ProductRow
 from app.logs import setup_logging
-from app.products import load_tracked, product_url, read_raw_history
+from app.products import product_url
 from app.scraper import save_data
 from app.scraper.load_data import ExtractData
-from app.scraper.process_data import ProcessData
+from app.scraper.process_data import parse_page
 
 log = logging.getLogger(__name__)
 
 
 def main() -> None:
-    """Scrape every tracked product once and save the prices to the CSV."""
+    """Scrape every tracked product once and save today's prices."""
     log.info("Scrape started")
 
-    extract_data = ExtractData(gpu_list=[product_url(a) for a in load_tracked()])
+    # Separate sessions: holding one open through minutes of HTTP pins a connection
+    with SessionLocal() as session:
+        asins = session.scalars(select(ProductRow.asin).where(ProductRow.tracked))
+        by_url = {product_url(asin): asin for asin in asins}
 
-    raw_data = extract_data.bs_extraction()
+    raw_data = ExtractData(gpu_list=list(by_url)).bs_extraction()
+    scraped = [
+        parse_page(by_url[url], html)
+        for url, html in zip(
+            raw_data["url_list"], raw_data["gpu_raw_data"], strict=True
+        )
+    ]
 
-    # Raw, uncleaned, so new rows append in the stored format
-    historical_data = read_raw_history()
+    with SessionLocal() as session:
+        save_data.save(session, scraped, datetime.date.today())
 
-    processed_data = ProcessData(
-        raw_data=raw_data["gpu_raw_data"],
-        url_list=raw_data["url_list"],
-        historical_data=historical_data,
-    )
-
-    processed_data.create_gpu_df()
-
-    gpu_data = processed_data.concat_historical_data()
-
-    save_data.write_csv(df=gpu_data)
-
-    log.info("Saved %d history rows", len(gpu_data))
+    log.info("Saved %d prices", sum(p.price_cents is not None for p in scraped))
 
 
 if __name__ == "__main__":

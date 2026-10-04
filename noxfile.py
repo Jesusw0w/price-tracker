@@ -6,7 +6,7 @@ nox.options.sessions = ["lint", "typecheck", "tests"]
 nox.options.default_venv_backend = "uv"
 
 PYTHON_VERSION = "3.14"
-SOURCES = ("app", "tests", "noxfile.py")
+SOURCES = ("app", "migrations", "tests", "noxfile.py")
 
 
 @nox.session(python=PYTHON_VERSION)

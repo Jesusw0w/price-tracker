@@ -138,6 +138,3 @@ dmypy.json
 
 .drafts/
 
-# Scraped data and the tracked list are per-install, never committed
-app/data/*
-!app/data/.gitkeep

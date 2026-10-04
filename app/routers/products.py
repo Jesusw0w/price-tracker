@@ -3,13 +3,9 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Path, Response, status
 from pydantic import BaseModel
 
-from app.products import (
-    Product,
-    load_products,
-    load_tracked,
-    parse_asin,
-    save_tracked,
-)
+from app.db.database import SessionDep
+from app.db.models import ProductRow
+from app.products import Product, parse_asin, to_product, tracked_products
 
 router = APIRouter(prefix="/api/products", tags=["products"])
 
@@ -21,14 +17,14 @@ class NewProduct(BaseModel):
 
 
 @router.get("")
-def list_products() -> list[Product]:
+def list_products(session: SessionDep) -> list[Product]:
     """List tracked products with their price history."""
-    return load_products(load_tracked())
+    return tracked_products(session)
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
-def track_product(body: NewProduct) -> Product:
-    """Start tracking a product.
+def track_product(body: NewProduct, session: SessionDep) -> Product:
+    """Start tracking a product, or resume one tracked before with its history.
 
     \f
     :raises HTTPException: 422 if the link has no ASIN, 409 if already tracked.
@@ -39,22 +35,27 @@ def track_product(body: NewProduct) -> Product:
             status.HTTP_422_UNPROCESSABLE_CONTENT,
             "Paste an Amazon product link or a 10-character ASIN",
         )
-    tracked = load_tracked()
-    if asin in tracked:
+    row = session.get(ProductRow, asin)
+    if row is None:
+        row = ProductRow(asin=asin)
+        session.add(row)
+    elif row.tracked:
         raise HTTPException(status.HTTP_409_CONFLICT, "Already tracking this product")
-    save_tracked([*tracked, asin])
-    return load_products([asin])[0]
+    row.tracked = True
+    session.commit()
+    return to_product(row)
 
 
 @router.delete("/{asin}", status_code=status.HTTP_204_NO_CONTENT)
-def untrack_product(asin: Asin) -> Response:
+def untrack_product(asin: Asin, session: SessionDep) -> Response:
     """Stop tracking a product. Its price history is kept.
 
     \f
     :raises HTTPException: 404 if not tracked.
     """
-    tracked = load_tracked()
-    if asin not in tracked:
+    row = session.get(ProductRow, asin)
+    if row is None or not row.tracked:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Product not tracked")
-    save_tracked([a for a in tracked if a != asin])
+    row.tracked = False
+    session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

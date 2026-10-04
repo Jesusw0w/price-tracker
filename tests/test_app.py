@@ -1,35 +1,53 @@
-import json
+import datetime
 import logging
-from pathlib import Path
+from collections.abc import Iterator
 
 import pytest
 from bs4 import BeautifulSoup
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import Session
+from sqlalchemy.pool import StaticPool
 
 from app import products
+from app.db.database import Base, get_session
+from app.db.models import PriceRow, ProductRow
 from app.main import create_app
-from app.scraper.process_data import ProcessData
+from app.scraper import save_data
+from app.scraper.process_data import Scraped, check_prices, parse_page
 
 TRACKED = "B0BMG3FBND"
-
-# Quirks of real scrapes: trailing space, timestamp vs date, re-scrape, N/A price
-HISTORY = """GPU|URL|Price|Date
-RX 7900 XT |https://www.amazon.es/X/dp/B0BMG3FBND/ref=1|1167.45|2023-02-11 10:00:00
-RX 7900 XT |https://www.amazon.es/dp/B0BMG3FBND|1150.0|2023-02-11
-RX 7900 XT |https://www.amazon.es/dp/B0BMG3FBND|N/A|2023-02-12
-RX 7900 XT |https://www.amazon.es/dp/B0BMG3FBND|1100.0|2023-02-10
-"""
+DAY = datetime.date(2023, 2, 11)
 
 
 @pytest.fixture
-def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    tracked = tmp_path / "tracked.json"
-    tracked.write_text(json.dumps([TRACKED]))
-    history = tmp_path / "history.csv"
-    history.write_text(HISTORY, encoding="utf-8")
-    monkeypatch.setattr(products, "tracked_path", tracked)
-    monkeypatch.setattr(products, "historical_data_path", history)
-    return TestClient(create_app())
+def session() -> Iterator[Session]:
+    # One in-memory database shared by the test and the endpoint's worker thread
+    engine = create_engine(
+        "sqlite://",
+        poolclass=StaticPool,
+        connect_args={"check_same_thread": False},
+    )
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        yield session
+
+
+@pytest.fixture
+def client(session: Session) -> TestClient:
+    session.add(ProductRow(asin=TRACKED, name="RX 7900 XT", added_at=DAY))
+    session.add_all(
+        [
+            PriceRow(asin=TRACKED, date=DAY, price_cents=115000),
+            PriceRow(
+                asin=TRACKED, date=DAY - datetime.timedelta(1), price_cents=110000
+            ),
+        ]
+    )
+    session.commit()
+    app = create_app()
+    app.dependency_overrides[get_session] = lambda: session
+    return TestClient(app)
 
 
 @pytest.mark.parametrize(
@@ -49,7 +67,7 @@ def test_parse_asin(link: str, asin: str | None) -> None:
     assert products.parse_asin(link) == asin
 
 
-def test_products_carry_cleaned_history(client: TestClient) -> None:
+def test_products_carry_history_oldest_first_in_euros(client: TestClient) -> None:
     [product] = client.get("/api/products").json()
     assert product["url"] == f"https://www.amazon.es/dp/{TRACKED}"
     assert product["name"] == "RX 7900 XT"
@@ -59,24 +77,16 @@ def test_products_carry_cleaned_history(client: TestClient) -> None:
     ]
 
 
-def test_starts_empty_without_data_files(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    tracked = tmp_path / "new" / "tracked.json"
-    monkeypatch.setattr(products, "tracked_path", tracked)
-    monkeypatch.setattr(products, "historical_data_path", tmp_path / "none.csv")
-    client = TestClient(create_app())
-    assert client.get("/api/products").json() == []
-    created = client.post("/api/products", json={"link": TRACKED}).json()
-    assert created["history"] == []
-    assert json.loads(tracked.read_text()) == [TRACKED]
-
-
 def test_track_and_untrack(client: TestClient) -> None:
     link = "https://www.amazon.es/dp/B0BNLSDRKB?psc=1"
     created = client.post("/api/products", json={"link": link})
     assert created.status_code == 201
-    assert created.json()["asin"] == "B0BNLSDRKB"
+    assert created.json() == {
+        "asin": "B0BNLSDRKB",
+        "url": "https://www.amazon.es/dp/B0BNLSDRKB",
+        "name": None,
+        "history": [],
+    }
     assert client.post("/api/products", json={"link": link}).status_code == 409
     assert client.post("/api/products", json={"link": "nope"}).status_code == 422
 
@@ -85,14 +95,37 @@ def test_track_and_untrack(client: TestClient) -> None:
     assert [p["asin"] for p in client.get("/api/products").json()] == [TRACKED]
 
 
-def test_check_prices() -> None:
+def test_retracking_keeps_history(client: TestClient) -> None:
+    assert client.delete(f"/api/products/{TRACKED}").status_code == 204
+    assert client.get("/api/products").json() == []
+    retracked = client.post("/api/products", json={"link": TRACKED})
+    assert retracked.status_code == 201
+    assert len(retracked.json()["history"]) == 2
+
+
+def test_parse_page() -> None:
     html = BeautifulSoup(
+        "<title>RX 7900 XT: Amazon.es: Informática</title>"
         '<div class="a-section aok-hidden twister-plus-buying-options-price-data">'
-        '[{"priceAmount": 989.0}]</div>',
+        '[{"priceAmount": 1167.45}]</div>',
         "html.parser",
     )
-    assert ProcessData.check_prices(html) == [{"priceAmount": 989.0}]
-    assert ProcessData.check_prices(BeautifulSoup("<p></p>", "html.parser")) is None
+    assert parse_page(TRACKED, html) == Scraped(TRACKED, "RX 7900 XT", 116745)
+    assert check_prices(BeautifulSoup("<p></p>", "html.parser")) is None
+
+
+def test_rescrape_same_day_overwrites_and_missing_price_is_skipped(
+    session: Session,
+) -> None:
+    session.add(ProductRow(asin=TRACKED))
+    session.commit()
+    save_data.save(session, [Scraped(TRACKED, "RX 7900 XT", 100000)], DAY)
+    save_data.save(session, [Scraped(TRACKED, None, 99000)], DAY)
+    save_data.save(session, [Scraped(TRACKED, None, None)], DAY + datetime.timedelta(1))
+
+    prices = session.scalars(select(PriceRow)).all()
+    assert [(p.date, p.price_cents) for p in prices] == [(DAY, 99000)]
+    assert session.get_one(ProductRow, TRACKED).name == "RX 7900 XT"
 
 
 def test_calls_are_logged_with_their_request_id(
@@ -110,10 +143,10 @@ def test_unhandled_errors_are_logged_and_answered_500(
     caplog: pytest.LogCaptureFixture,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def boom() -> list[str]:
-        raise OSError("disk gone")
+    def boom(_: Session) -> list[products.Product]:
+        raise OSError("database gone")
 
-    monkeypatch.setattr("app.routers.products.load_tracked", boom)
+    monkeypatch.setattr("app.routers.products.tracked_products", boom)
     response = client.get("/api/products")
     assert response.status_code == 500
     rid = response.headers["X-Request-ID"]
