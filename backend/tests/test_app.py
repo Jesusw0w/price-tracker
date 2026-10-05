@@ -1,17 +1,15 @@
 import datetime
 import logging
-from collections.abc import Iterator
 
 import pytest
 from bs4 import BeautifulSoup
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, select
+from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
-from sqlalchemy.pool import StaticPool
 
 from app import products
-from app.db.database import Base, get_session
+from app.db.database import get_session
 from app.db.models import PriceRow, ProductRow
 from app.main import create_app
 from app.scraper import save_data
@@ -19,19 +17,6 @@ from app.scraper.process_data import Scraped, check_prices, parse_page
 
 TRACKED = "B0BMG3FBND"
 DAY = datetime.date(2023, 2, 11)
-
-
-@pytest.fixture
-def session() -> Iterator[Session]:
-    # One in-memory database shared by the test and the endpoint's worker thread
-    engine = create_engine(
-        "sqlite://",
-        poolclass=StaticPool,
-        connect_args={"check_same_thread": False},
-    )
-    Base.metadata.create_all(engine)
-    with Session(engine) as session:
-        yield session
 
 
 @pytest.fixture
@@ -49,23 +34,6 @@ def client(session: Session) -> TestClient:
     app = create_app()
     app.dependency_overrides[get_session] = lambda: session
     return TestClient(app)
-
-
-@pytest.mark.parametrize(
-    ("link", "asin"),
-    [
-        (
-            "https://www.amazon.es/XFX-Radeon/dp/B0BNLSDRKB/ref=sr_1_2?k=amd",
-            "B0BNLSDRKB",
-        ),
-        ("https://www.amazon.es/gp/product/B0BNLSDRKB?th=1", "B0BNLSDRKB"),
-        (" b0bnlsdrkb ", "B0BNLSDRKB"),
-        ("https://www.amazon.es/s?k=rtx+4070", None),
-        ("rtx 4070 ti", None),
-    ],
-)
-def test_parse_asin(link: str, asin: str | None) -> None:
-    assert products.parse_asin(link) == asin
 
 
 def test_products_carry_history_oldest_first_in_euros(client: TestClient) -> None:

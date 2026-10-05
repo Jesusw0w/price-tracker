@@ -34,6 +34,13 @@ class Product(BaseModel):
     history: list[PricePoint]  # oldest first
 
 
+class ProductSummary(BaseModel):
+    asin: str
+    name: str | None
+    price: float | None
+    price_date: datetime.date | None
+
+
 def parse_asin(link: str) -> str | None:
     """Return the upper-cased ASIN from a product URL or bare ASIN, else ``None``."""
     match = ASIN_RE.search(link.strip())
@@ -84,3 +91,15 @@ def track(session: Session, link: str) -> Product:
     row.tracked = True
     session.commit()
     return to_product(row)
+
+
+def summarize(product: Product) -> ProductSummary:
+    """Generate a summary of the product with latest price."""
+    latest_record = product.history[-1] if product.history else None
+
+    return ProductSummary(
+        asin=product.asin,
+        name=product.name,
+        price=latest_record.price if latest_record else None,
+        price_date=latest_record.date if latest_record else None,
+    )
