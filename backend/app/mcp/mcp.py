@@ -10,55 +10,60 @@ There are no delete tools. Every tool uses the same service layer as /api.
 
 from fastmcp import FastMCP
 
-# from ..products import
+from app.db.database import SessionLocal
+from app.products import ProductSummary, summarize, tracked_products
+
 mcp = FastMCP(name="Amazon Price Tracker")
 
 
-@mcp.tool(description="Get a list of trackers.")
-def get_list_trackers():
-    """"""
-    pass
+@mcp.tool(annotations={"readOnlyHint": True})
+def list_trackers() -> list[ProductSummary]:
+    """List of every tracked Amazon.es product with its latest price.
+
+    Prices are in EUR. Price and date are None for products not scraped yet.
+    Call this first to find the ASINs the other tools take.
+    """
+    with SessionLocal() as session:
+        return [summarize(p) for p in tracked_products(session)]
 
 
-@mcp.tool(description="Get the price history.")
+@mcp.tool
 def get_price_history(tracker_id: str, days: int):
-    """"""
+    """Get the price history."""
     pass
 
 
-@mcp.tool(description="Get the price summary.")
+@mcp.tool
 def get_price_summary(tracker_id: str):
-    """"""
+    """Get the price summary."""
     pass
 
 
-@mcp.tool(description="Get refresh status.")
+@mcp.tool
 def get_refresh_status(request_id: str):
-    """"""
+    """Get refresh status."""
     pass
 
 
-@mcp.tool(
-    description="Start tracking an Amazon.es product.",
-)
+@mcp.tool
 def add_tracker(url: str):
-    """Only Amazon.es links are supported for now."""
+    """Start tracking a product. Only Amazon.es links are supported for now."""
     pass
 
 
-@mcp.tool(description="Set a new target price in cents.")
+@mcp.tool
 def set_target_price(tracker_id: str, price: int):
     """Set a product's target price in cents."""
     pass
 
 
-@mcp.tool(description="Request a status refresh.")
+@mcp.tool
 def request_refresh(tracker_id: str):
-    """"""
+    """Request a status refresh."""
     pass
 
 
-@mcp.tool(description="Identify if a product is currently a good deal.")
+@mcp.tool
 def is_a_good_deal(tracker_id: str):
-    """"""
+    """Identify if a product is currently a good deal."""
     pass

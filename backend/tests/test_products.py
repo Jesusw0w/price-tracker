@@ -104,10 +104,10 @@ def test_product_summary() -> None:
             PricePoint(date=datetime.date(2026, 10, 5), price=200.0),
         ],
     )
-    product_no_price = Product(
+    new_product = Product(
         asin=ASIN,
         url=products.product_url(ASIN),
-        name="RTX 5070Ti",
+        name=None,
         history=[],
     )
     assert products.summarize(product) == ProductSummary(
@@ -116,9 +116,9 @@ def test_product_summary() -> None:
         price=200.0,
         price_date=datetime.date(2026, 10, 5),
     )
-    assert products.summarize(product_no_price) == ProductSummary(
+    assert products.summarize(new_product) == ProductSummary(
         asin=ASIN,
-        name="RTX 5070Ti",
+        name=None,
         price=None,
         price_date=None
     )
