@@ -33,8 +33,8 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["asin"], ["products.asin"]),
         sa.PrimaryKeyConstraint("asin", "date"),
     )
-    # No policies: closes the tables to Supabase's public REST API; the owner role
-    # the app connects as bypasses RLS
+    # No policies, so Supabase's public REST API can't reach these tables.
+    # The app connects as the owner role, which bypasses RLS.
     for table in ("products", "prices", "alembic_version"):
         op.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")
 
