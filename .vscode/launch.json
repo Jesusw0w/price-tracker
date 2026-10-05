@@ -7,14 +7,14 @@
             "request": "launch",
             "module": "fastapi",
             "args": ["dev"],
-            "cwd": "${workspaceFolder}"
+            "cwd": "${workspaceFolder}/backend"
         },
         {
             "name": "Scraper",
             "type": "debugpy",
             "request": "launch",
             "module": "app.scraper.run",
-            "cwd": "${workspaceFolder}",
+            "cwd": "${workspaceFolder}/backend",
             "console": "integratedTerminal"
         }
     ]

@@ -1,0 +1,30 @@
+[
+  {
+    "label": "backend: API (fastapi dev)",
+    "command": "uv run fastapi dev",
+    "cwd": "$ZED_WORKTREE_ROOT/backend",
+    "use_new_terminal": true
+  },
+  {
+    "label": "backend: scraper",
+    "command": "uv run python -m app.scraper.run",
+    "cwd": "$ZED_WORKTREE_ROOT/backend"
+  },
+  {
+    "label": "backend: migrate (alembic upgrade head)",
+    "command": "uv run alembic upgrade head",
+    "cwd": "$ZED_WORKTREE_ROOT/backend"
+  },
+  {
+    "label": "backend: nox",
+    "command": "uv run nox",
+    "cwd": "$ZED_WORKTREE_ROOT/backend",
+    "save": "all"
+  },
+  {
+    "label": "backend: nox format",
+    "command": "uv run nox -s format",
+    "cwd": "$ZED_WORKTREE_ROOT/backend",
+    "save": "all"
+  }
+]
