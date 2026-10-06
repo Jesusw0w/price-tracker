@@ -120,8 +120,25 @@ def summarize(product: Product) -> ProductSummary:
     )
 
 
+def product_row(session: Session, asin: str) -> ProductRow:
+    """Return the product, tracked or not.
+
+    Raises:
+        UnknownProduct: No product has this ASIN.
+    """
+    row = session.get(ProductRow, asin)
+    if row is None:
+        raise UnknownProduct(f"No product with ASIN {asin}")
+    return row
+
+
 def price_history(session: Session, asin: str, days: int) -> list[PricePoint]:
-    """Return the history of prices for a product for the x previous days."""
+    """Return prices from the last ``days`` days plus today, oldest first, in euros.
+
+    Raises:
+        UnknownProduct: No product has this ASIN.
+    """
+    product_row(session, asin)
     filtered_history = session.scalars(
         select(PriceRow)
         .where(
@@ -136,26 +153,23 @@ def price_history(session: Session, asin: str, days: int) -> list[PricePoint]:
 
 
 def price_summary(session: Session, asin: str, days: int) -> PriceSummary:
-    """Return a price summary of a product. Contains the asin, name,
-    latest recorded price along with the mean and median of the price.
-    """
-    row = session.get(ProductRow, asin)
-    if not row:
-        raise UnknownProduct(f"No product with ASIN {asin}")
+    """Summarize prices from the last ``days`` days plus today, in euros.
 
-    filtered_prices = session.scalars(
-        select(PriceRow).where(PriceRow.asin == asin).order_by(PriceRow.date)
-    )
-    prices = [pr.price_cents / 100 for pr in filtered_prices]
+    Price fields are None when no price was recorded in that window.
+
+    Raises:
+        UnknownProduct: No product has this ASIN.
+    """
+    row = product_row(session, asin)
+    prices = [p.price for p in price_history(session, asin, days)]
     if not prices:
         return PriceSummary(asin=asin, name=row.name)
-
     return PriceSummary(
         asin=asin,
         name=row.name,
         latest_price=prices[-1],
         highest_price=max(prices),
         lowest_price=min(prices),
-        mean_price=round(statistics.mean(prices),2),
-        median_price=round(statistics.median(prices),2),
+        mean_price=round(statistics.mean(prices), 2),
+        median_price=round(statistics.median(prices), 2),
     )

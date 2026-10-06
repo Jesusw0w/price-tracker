@@ -143,3 +143,8 @@ def test_price_history_keeps_cutoff_day_to_today_of_one_product_oldest_first(
         PricePoint(date=cutoff, price=1150.0),
         PricePoint(date=today, price=1100.5),
     ]
+
+
+def test_price_history_rejects_unknown_asin(session: Session) -> None:
+    with pytest.raises(products.UnknownProduct):
+        products.price_history(session, ASIN, 7)

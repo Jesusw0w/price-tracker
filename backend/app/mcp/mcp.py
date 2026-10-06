@@ -27,6 +27,8 @@ from app.products import (
     tracked_products,
 )
 
+Days = Annotated[int, Field(ge=1)]
+
 mcp = FastMCP(name="Amazon Price Tracker")
 
 
@@ -42,18 +44,24 @@ def list_trackers() -> list[ProductSummary]:
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
-def get_price_history(asin: str, days: int) -> list[PricePoint]:
-    """Get the price history for a product for the last x days, today included.
+def get_price_history(asin: Asin, days: Days) -> list[PricePoint]:
+    """Daily EUR prices of a product over the last days, oldest first.
 
-    Prices are in EUR.
+    Today is included. Days without a scrape are missing, not zero.
     """
     with SessionLocal() as session:
-        return price_history(session=session, asin=asin, days=days)
+        try:
+            return price_history(session, asin, days)
+        except UnknownProduct as e:
+            raise ToolError(str(e)) from e
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
-def get_price_summary(asin: Asin, days: Annotated[int, Field(ge=1)]) -> PriceSummary:
-    """Get the price summary."""
+def get_price_summary(asin: Asin, days: Days) -> PriceSummary:
+    """Latest, lowest, highest, mean and median EUR price over the last days.
+
+    Today is included. Price fields are None if nothing was recorded in that window.
+    """
     with SessionLocal() as session:
         try:
             return price_summary(session, asin, days)
