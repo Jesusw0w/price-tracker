@@ -12,8 +12,6 @@ def save(session: Session, scraped: list[Scraped], day: datetime.date) -> None:
         if page.name:
             session.get_one(ProductRow, page.asin).name = page.name
         if page.price_cents is not None:
-            # merge is SELECT then INSERT/UPDATE, safe for one writer only
-            # use INSERT ... ON CONFLICT if scrapes ever overlap
             session.merge(
                 PriceRow(asin=page.asin, date=day, price_cents=page.price_cents)
             )

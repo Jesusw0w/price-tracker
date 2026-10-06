@@ -22,7 +22,6 @@ def parse_page(asin: str, html: BeautifulSoup) -> Scraped:
     return Scraped(
         asin=asin,
         name=html.title.text.replace(TITLE_SUFFIX, "").strip() if html.title else None,
-        # round, not int: 1167.45 * 100 is 116744.99999999999
         price_cents=round(prices[0]["priceAmount"] * 100) if prices else None,
     )
 

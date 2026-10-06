@@ -20,7 +20,6 @@ _base_factory = logging.getLogRecordFactory()
 
 def _record_with_request_id(*args: Any, **kwargs: Any) -> logging.LogRecord:  # noqa: ANN401  # LogRecord's own signature
     record = _base_factory(*args, **kwargs)
-    # Read here, on the calling task, not in the handler thread that has no context
     record.request_id = request_id.get()
     return record
 
@@ -45,7 +44,6 @@ def setup_logging(level: int = logging.INFO) -> None:
     root = logging.getLogger()
     root.addHandler(QueueHandler(log_queue))
     root.setLevel(level)
-    # Replaced by AccessLog, which adds the request id and duration
     logging.getLogger("uvicorn.access").disabled = True
 
 
@@ -79,7 +77,6 @@ class AccessLog:
             access_log.exception("Unhandled error")
             if started:
                 raise
-            # Answered here, or Starlette and uvicorn log the traceback again, sans id
             response = JSONResponse(
                 {"detail": "Internal Server Error"},
                 status_code=500,

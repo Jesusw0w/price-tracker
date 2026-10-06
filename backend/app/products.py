@@ -174,3 +174,8 @@ def price_summary(session: Session, asin: str, days: int) -> PriceSummary:
         mean_price=round(statistics.mean(prices), 2),
         median_price=round(statistics.median(prices), 2),
     )
+
+
+def request_refresh(session: Session, asin: str) -> None:
+    """Request a new refresh of product data."""
+    product_row(session, asin)

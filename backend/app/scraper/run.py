@@ -19,7 +19,6 @@ def main() -> None:
     """Scrape every tracked product once and save today's prices."""
     log.info("Scrape started")
 
-    # Separate sessions: holding one open through minutes of HTTP pins a connection
     with SessionLocal() as session:
         asins = session.scalars(select(ProductRow.asin).where(ProductRow.tracked))
         by_url = {product_url(asin): asin for asin in asins}
