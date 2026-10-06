@@ -35,7 +35,7 @@ Days = Annotated[int, Field(ge=1)]
 mcp = FastMCP(name="Amazon Price Tracker")
 
 
-@mcp.tool(annotations={"readOnlyHint": True})
+@mcp.tool(annotations={"readOnlyHint": True, "openWorldHint":False})
 def list_trackers() -> list[ProductSummary]:
     """List of every tracked Amazon.es product with its latest price.
 
@@ -46,7 +46,7 @@ def list_trackers() -> list[ProductSummary]:
         return [summarize(p) for p in tracked_products(session)]
 
 
-@mcp.tool(annotations={"readOnlyHint": True})
+@mcp.tool(annotations={"readOnlyHint": True, "openWorldHint":False})
 def get_price_history(asin: Asin, days: Days) -> list[PricePoint]:
     """Daily EUR prices of a product over the last days, oldest first.
 
@@ -59,7 +59,7 @@ def get_price_history(asin: Asin, days: Days) -> list[PricePoint]:
             raise ToolError(str(e)) from e
 
 
-@mcp.tool(annotations={"readOnlyHint": True})
+@mcp.tool(annotations={"readOnlyHint": True, "openWorldHint":False})
 def get_price_summary(asin: Asin, days: Days) -> PriceSummary:
     """Latest, lowest, highest, mean and median EUR price over the last days.
 
@@ -72,7 +72,7 @@ def get_price_summary(asin: Asin, days: Days) -> PriceSummary:
             raise ToolError(str(e)) from e
 
 
-@mcp.tool
+@mcp.tool(annotations={"readOnlyHint": True, "openWorldHint":False})
 def get_refresh_status(request_id: str) -> None:
     """Get refresh status."""
     pass
@@ -94,13 +94,13 @@ def set_target_price(asin: str, price: int):
     pass
 
 
-@mcp.tool
+@mcp.tool(annotations={"destructiveHint":False, "idempotentHint": True})
 def request_refresh(asin: str):
     """Request a status refresh."""
     pass
 
 
-@mcp.tool
+@mcp.tool(annotations={"readOnlyHint":True})
 def is_a_good_deal(asin: str):
     """Identify if a product is currently a good deal."""
     pass
