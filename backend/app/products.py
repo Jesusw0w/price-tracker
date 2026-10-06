@@ -4,10 +4,11 @@ import statistics
 from typing import Annotated
 
 from pydantic import BaseModel, StringConstraints
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.db.models import PriceRow, ProductRow
+from app.config import settings
+from app.db.models import PriceRow, ProductRow, RefreshRow, RefreshStatus
 
 ASIN_RE = re.compile(r"(?:/dp/|/gp/product/|^)([A-Z0-9]{10})(?:[/?#]|$)", re.IGNORECASE)
 
@@ -27,6 +28,10 @@ class UnknownProduct(LookupError):
     pass
 
 
+class NotTracked(Exception):
+    pass
+
+
 class PricePoint(BaseModel):
     date: datetime.date
     price: float  # euros
@@ -35,15 +40,15 @@ class PricePoint(BaseModel):
 class Product(BaseModel):
     asin: str
     url: str
-    name: str | None  # None until first scraped
+    name: str | None = None
     history: list[PricePoint]  # oldest first
 
 
 class ProductSummary(BaseModel):
     asin: str
-    name: str | None
-    price: float | None
-    price_date: datetime.date | None
+    name: str | None = None
+    price: float | None = None
+    price_date: datetime.date | None = None
 
 
 class PriceSummary(BaseModel):
@@ -54,6 +59,20 @@ class PriceSummary(BaseModel):
     lowest_price: float | None = None
     mean_price: float | None = None
     median_price: float | None = None
+
+
+class RefreshInfo(BaseModel):
+    asin: str
+    status: RefreshStatus | None = None
+    requested_at: datetime.datetime | None = None
+    finished_at: datetime.datetime | None = None
+    error: str | None = None
+    last_price_date: datetime.date | None = None
+
+
+def _as_utc(moment: datetime.datetime) -> datetime.datetime:
+    """Ensure date and hours are set to UTC."""
+    return moment if moment.tzinfo else moment.replace(tzinfo=datetime.UTC)
 
 
 def parse_asin(link: str) -> str | None:
@@ -179,3 +198,52 @@ def price_summary(session: Session, asin: str, days: int) -> PriceSummary:
 def request_refresh(session: Session, asin: str) -> None:
     """Request a new refresh of product data."""
     product_row(session, asin)
+
+
+def refresh_status(session: Session, asin: str) -> RefreshInfo:
+    """Refresh a product status."""
+    product_row(session, asin)
+    last_price_date = session.scalar(
+        select(func.max(PriceRow.date)).where(PriceRow.asin == asin)
+    )
+
+    refresh = session.get(RefreshRow, asin)
+    if refresh is None:
+        return RefreshInfo(
+            asin=asin,
+            last_price_date=last_price_date,
+        )
+
+    return RefreshInfo(
+        asin=asin,
+        status=refresh.status,
+        requested_at=refresh.requested_at,
+        finished_at=refresh.finished_at,
+        error=refresh.error,
+        last_price_date=last_price_date,
+    )
+
+
+def queue_refresh(session: Session, asin: str) -> RefreshInfo:
+    """Queue a refresh request."""
+    if not product_row(session, asin).tracked:
+        raise NotTracked(f"Product {asin} is not tracked")
+    now = datetime.datetime.now(datetime.UTC)
+    cooldown = datetime.timedelta(minutes=settings.refresh_cooldown_minutes)
+    refresh = session.get(RefreshRow, asin)
+    if refresh is None:
+        refresh = RefreshRow(asin=asin)
+        session.add(refresh)
+    elif (
+        refresh.status in ("pending", "running")
+        or now - _as_utc(refresh.requested_at) < cooldown
+    ):
+        return refresh_status(session, asin)
+
+    refresh.status = "pending"
+    refresh.requested_at = datetime.datetime.now(datetime.UTC)
+    refresh.finished_at = None
+    refresh.error = None
+    session.commit()
+
+    return refresh_status(session, asin)

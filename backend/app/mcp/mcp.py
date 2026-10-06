@@ -90,13 +90,13 @@ def add_tracker(url: str) -> ProductSummary:
 
 
 @mcp.tool(annotations={"idempotentHint": True, "openWorldHint": False})
-def set_target_price(asin: str, price: int):
+def set_target_price(asin: str, price: int) -> None:
     """Set a product's target price in cents."""
     pass
 
 
 @mcp.tool(annotations={"destructiveHint": False, "idempotentHint": True})
-def request_refresh(asin: str):
+def request_refresh(asin: str) -> None:
     """Request a status refresh."""
     with SessionLocal() as session:
         try:
@@ -106,6 +106,6 @@ def request_refresh(asin: str):
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
-def is_a_good_deal(asin: str):
+def is_a_good_deal(asin: str) -> None:
     """Identify if a product is currently a good deal."""
     pass

@@ -4,11 +4,12 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app import products
-from app.db.models import PriceRow, ProductRow
+from app.db.models import PriceRow, ProductRow, RefreshRow
 from app.products import PricePoint, Product, ProductSummary
 
 ASIN = "B0BMG3FBND"
 DAY = datetime.date(2023, 2, 11)
+LONG_AGO = datetime.datetime(2020, 1, 1, tzinfo=datetime.UTC)
 
 
 @pytest.mark.parametrize(
@@ -148,3 +149,90 @@ def test_price_history_keeps_cutoff_day_to_today_of_one_product_oldest_first(
 def test_price_history_rejects_unknown_asin(session: Session) -> None:
     with pytest.raises(products.UnknownProduct):
         products.price_history(session, ASIN, 7)
+
+
+def test_queue_refresh_creates_pending_request(session: Session) -> None:
+    session.add(ProductRow(asin=ASIN))
+    session.commit()
+    info = products.queue_refresh(session, ASIN)
+    assert info.status == "pending"
+    assert info.requested_at is not None
+
+
+def test_queue_refresh_within_cooldown_returns_same_request(session: Session) -> None:
+    session.add(ProductRow(asin=ASIN))
+    session.commit()
+    first = products.queue_refresh(session, ASIN)
+    assert products.queue_refresh(session, ASIN) == first
+
+
+def test_queue_refresh_after_cooldown_requeues_and_clears_last_outcome(
+    session: Session,
+) -> None:
+    session.add(ProductRow(asin=ASIN))
+    session.add(
+        RefreshRow(
+            asin=ASIN,
+            status="failed",
+            requested_at=LONG_AGO,
+            finished_at=LONG_AGO,
+            error="HTTP 503",
+        )
+    )
+    session.commit()
+    info = products.queue_refresh(session, ASIN)
+    assert (info.status, info.finished_at, info.error) == ("pending", None, None)
+
+
+def test_queue_refresh_leaves_running_request_alone(session: Session) -> None:
+    session.add(ProductRow(asin=ASIN))
+    session.add(RefreshRow(asin=ASIN, status="running", requested_at=LONG_AGO))
+    session.commit()
+    assert products.queue_refresh(session, ASIN).status == "running"
+
+
+def test_queue_refresh_rejects_untracked_product(session: Session) -> None:
+    session.add(ProductRow(asin=ASIN, tracked=False))
+    session.commit()
+    with pytest.raises(products.NotTracked):
+        products.queue_refresh(session, ASIN)
+
+
+def test_queue_refresh_rejects_unknown_asin(session: Session) -> None:
+    with pytest.raises(products.UnknownProduct):
+        products.queue_refresh(session, ASIN)
+
+
+def test_refresh_status_of_never_refreshed_product(session: Session) -> None:
+    session.add(ProductRow(asin=ASIN))
+    session.add_all(
+        [
+            PriceRow(asin=ASIN, date=DAY, price_cents=100000),
+            PriceRow(asin=ASIN, date=DAY - datetime.timedelta(1), price_cents=1),
+        ]
+    )
+    session.commit()
+    assert products.refresh_status(session, ASIN) == products.RefreshInfo(
+        asin=ASIN, last_price_date=DAY
+    )
+
+
+def test_refresh_status_reports_why_the_last_refresh_failed(session: Session) -> None:
+    session.add(ProductRow(asin=ASIN))
+    session.add(
+        RefreshRow(
+            asin=ASIN,
+            status="failed",
+            requested_at=LONG_AGO,
+            finished_at=LONG_AGO,
+            error="HTTP 503",
+        )
+    )
+    session.commit()
+    info = products.refresh_status(session, ASIN)
+    assert (info.status, info.error) == ("failed", "HTTP 503")
+
+
+def test_refresh_status_rejects_unknown_asin(session: Session) -> None:
+    with pytest.raises(products.UnknownProduct):
+        products.refresh_status(session, ASIN)
