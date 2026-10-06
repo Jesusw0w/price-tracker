@@ -1,12 +1,13 @@
 import datetime
 import re
+import statistics
 from typing import Annotated
 
 from pydantic import BaseModel, StringConstraints
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.db.models import ProductRow
+from app.db.models import PriceRow, ProductRow
 
 ASIN_RE = re.compile(r"(?:/dp/|/gp/product/|^)([A-Z0-9]{10})(?:[/?#]|$)", re.IGNORECASE)
 
@@ -19,6 +20,10 @@ class InvalidLink(ValueError):
 
 
 class AlreadyTracked(Exception):
+    pass
+
+
+class UnknownProduct(LookupError):
     pass
 
 
@@ -39,6 +44,16 @@ class ProductSummary(BaseModel):
     name: str | None
     price: float | None
     price_date: datetime.date | None
+
+
+class PriceSummary(BaseModel):
+    asin: str
+    name: str | None
+    latest_price: float | None = None
+    highest_price: float | None = None
+    lowest_price: float | None = None
+    mean_price: float | None = None
+    median_price: float | None = None
 
 
 def parse_asin(link: str) -> str | None:
@@ -102,4 +117,45 @@ def summarize(product: Product) -> ProductSummary:
         name=product.name,
         price=latest_record.price if latest_record else None,
         price_date=latest_record.date if latest_record else None,
+    )
+
+
+def price_history(session: Session, asin: str, days: int) -> list[PricePoint]:
+    """Return the history of prices for a product for the x previous days."""
+    filtered_history = session.scalars(
+        select(PriceRow)
+        .where(
+            PriceRow.date >= (datetime.date.today() - datetime.timedelta(days=days)),
+            PriceRow.asin == asin,
+        )
+        .order_by(PriceRow.date)
+    )
+    return [
+        PricePoint(price=p.price_cents / 100, date=p.date) for p in filtered_history
+    ]
+
+
+def price_summary(session: Session, asin: str, days: int) -> PriceSummary:
+    """Return a price summary of a product. Contains the asin, name,
+    latest recorded price along with the mean and median of the price.
+    """
+    row = session.get(ProductRow, asin)
+    if not row:
+        raise UnknownProduct(f"No product with ASIN {asin}")
+
+    filtered_prices = session.scalars(
+        select(PriceRow).where(PriceRow.asin == asin).order_by(PriceRow.date)
+    )
+    prices = [pr.price_cents / 100 for pr in filtered_prices]
+    if not prices:
+        return PriceSummary(asin=asin, name=row.name)
+
+    return PriceSummary(
+        asin=asin,
+        name=row.name,
+        latest_price=prices[-1],
+        highest_price=max(prices),
+        lowest_price=min(prices),
+        mean_price=round(statistics.mean(prices),2),
+        median_price=round(statistics.median(prices),2),
     )

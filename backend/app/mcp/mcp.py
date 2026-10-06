@@ -8,10 +8,24 @@ Optional: is_good_deal, backed by Bedrock.
 There are no delete tools. Every tool uses the same service layer as /api.
 """
 
+from typing import Annotated
+
 from fastmcp import FastMCP
+from fastmcp.exceptions import ToolError
+from pydantic import Field
 
 from app.db.database import SessionLocal
-from app.products import ProductSummary, summarize, tracked_products
+from app.products import (
+    Asin,
+    PricePoint,
+    PriceSummary,
+    ProductSummary,
+    UnknownProduct,
+    price_history,
+    price_summary,
+    summarize,
+    tracked_products,
+)
 
 mcp = FastMCP(name="Amazon Price Tracker")
 
@@ -27,16 +41,24 @@ def list_trackers() -> list[ProductSummary]:
         return [summarize(p) for p in tracked_products(session)]
 
 
-@mcp.tool
-def get_price_history(tracker_id: str, days: int):
-    """Get the price history."""
-    pass
+@mcp.tool(annotations={"readOnlyHint": True})
+def get_price_history(asin: str, days: int) -> list[PricePoint]:
+    """Get the price history for a product for the last x days, today included.
+
+    Prices are in EUR.
+    """
+    with SessionLocal() as session:
+        return price_history(session=session, asin=asin, days=days)
 
 
-@mcp.tool
-def get_price_summary(tracker_id: str):
+@mcp.tool(annotations={"readOnlyHint": True})
+def get_price_summary(asin: Asin, days: Annotated[int, Field(ge=1)]) -> PriceSummary:
     """Get the price summary."""
-    pass
+    with SessionLocal() as session:
+        try:
+            return price_summary(session, asin, days)
+        except UnknownProduct as e:
+            raise ToolError(str(e)) from e
 
 
 @mcp.tool
@@ -52,18 +74,18 @@ def add_tracker(url: str):
 
 
 @mcp.tool
-def set_target_price(tracker_id: str, price: int):
+def set_target_price(asin: str, price: int):
     """Set a product's target price in cents."""
     pass
 
 
 @mcp.tool
-def request_refresh(tracker_id: str):
+def request_refresh(asin: str):
     """Request a status refresh."""
     pass
 
 
 @mcp.tool
-def is_a_good_deal(tracker_id: str):
+def is_a_good_deal(asin: str):
     """Identify if a product is currently a good deal."""
     pass

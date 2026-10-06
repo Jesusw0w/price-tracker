@@ -117,8 +117,29 @@ def test_product_summary() -> None:
         price_date=datetime.date(2026, 10, 5),
     )
     assert products.summarize(new_product) == ProductSummary(
-        asin=ASIN,
-        name=None,
-        price=None,
-        price_date=None
+        asin=ASIN, name=None, price=None, price_date=None
     )
+
+
+def test_price_history_keeps_cutoff_day_to_today_of_one_product_oldest_first(
+    session: Session,
+) -> None:
+    other = "B000000001"
+    today = datetime.date.today()
+    cutoff = today - datetime.timedelta(7)
+    session.add_all([ProductRow(asin=ASIN), ProductRow(asin=other)])
+    session.add_all(
+        [
+            PriceRow(asin=ASIN, date=today, price_cents=110050),
+            PriceRow(asin=other, date=today, price_cents=99900),
+            PriceRow(asin=ASIN, date=cutoff, price_cents=115000),
+            PriceRow(
+                asin=ASIN, date=cutoff - datetime.timedelta(1), price_cents=120000
+            ),
+        ]
+    )
+    session.commit()
+    assert products.price_history(session, ASIN, 7) == [
+        PricePoint(date=cutoff, price=1150.0),
+        PricePoint(date=today, price=1100.5),
+    ]
