@@ -164,6 +164,7 @@ def price_summary(session: Session, asin: str, days: int) -> PriceSummary:
     prices = [p.price for p in price_history(session, asin, days)]
     if not prices:
         return PriceSummary(asin=asin, name=row.name)
+
     return PriceSummary(
         asin=asin,
         name=row.name,

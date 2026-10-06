@@ -16,7 +16,9 @@ from pydantic import Field
 
 from app.db.database import SessionLocal
 from app.products import (
+    AlreadyTracked,
     Asin,
+    InvalidLink,
     PricePoint,
     PriceSummary,
     ProductSummary,
@@ -24,6 +26,7 @@ from app.products import (
     price_history,
     price_summary,
     summarize,
+    track,
     tracked_products,
 )
 
@@ -70,18 +73,22 @@ def get_price_summary(asin: Asin, days: Days) -> PriceSummary:
 
 
 @mcp.tool
-def get_refresh_status(request_id: str):
+def get_refresh_status(request_id: str) -> None:
     """Get refresh status."""
     pass
 
 
-@mcp.tool
-def add_tracker(url: str):
+@mcp.tool(annotations={"destructiveHint": False, "openWorldHint": False})
+def add_tracker(url: str) -> ProductSummary:
     """Start tracking a product. Only Amazon.es links are supported for now."""
-    pass
+    with SessionLocal() as session:
+        try:
+            return summarize(track(session, url))
+        except (InvalidLink, AlreadyTracked) as e:
+            raise ToolError(str(e)) from e
 
 
-@mcp.tool
+@mcp.tool(annotations={"idempotentHint": True, "openWorldHint": False})
 def set_target_price(asin: str, price: int):
     """Set a product's target price in cents."""
     pass
