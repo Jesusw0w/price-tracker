@@ -34,6 +34,7 @@ from app.products import (
 )
 
 Days = Annotated[int, Field(ge=1)]
+Asins = Annotated[list[Asin], Field(min_length=1, max_length=50)]
 
 mcp = FastMCP(name="Amazon Price Tracker")
 
@@ -79,17 +80,17 @@ def get_price_summary(asin: Asin, days: Days) -> PriceSummary:
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": False})
-def get_refresh_status(asin: Asin) -> RefreshInfo:
-    """Latest refresh of a product and the date of its newest price.
+def get_refresh_status(asins: Asins) -> list[RefreshInfo]:
+    """Latest refresh of each product and the date of its newest price.
 
     Status is null if no refresh was ever requested. If it failed, error says why.
 
     Args:
-        asin: ASIN from list_trackers.
+        asins: ASINs from list_trackers.
     """
     with SessionLocal() as session:
         try:
-            return refresh_status(session, asin)
+            return refresh_status(session, asins)
         except UnknownProduct as e:
             raise ToolError(str(e)) from e
 
@@ -121,17 +122,18 @@ def add_tracker(url: str) -> ProductSummary:
         "openWorldHint": True,
     }
 )
-def request_refresh(asin: Asin) -> RefreshInfo:
-    """Queue a price scrape. Returns at once, so poll get_refresh_status.
+def request_refresh(asins: Asins) -> list[RefreshInfo]:
+    """Queue price scrapes. Returns at once, so poll get_refresh_status.
 
-    If a request is already pending, running or recent, returns that one instead.
+    A product with a pending, running or recent request keeps it. If any ASIN
+    is unknown or untracked, nothing is queued.
 
     Args:
-        asin: ASIN from list_trackers.
+        asins: ASINs from list_trackers.
     """
     with SessionLocal() as session:
         try:
-            return queue_refresh(session, asin)
+            return queue_refresh(session, asins)
         except (UnknownProduct, NotTracked) as e:
             raise ToolError(str(e)) from e
 

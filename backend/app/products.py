@@ -195,61 +195,86 @@ def price_summary(session: Session, asin: str, days: int) -> PriceSummary:
     )
 
 
-def refresh_status(session: Session, asin: str) -> RefreshInfo:
-    """The product's latest refresh request and the date of its newest price.
+def product_rows(session: Session, asins: list[str]) -> list[ProductRow]:
+    """Return the products in the order given, without duplicates.
 
     Raises:
-        UnknownProduct: No product has this ASIN.
+        UnknownProduct: Some ASINs have no product; the message lists them all.
     """
-    product_row(session, asin)
-    last_price_date = session.scalar(
-        select(func.max(PriceRow.date)).where(PriceRow.asin == asin)
-    )
-
-    refresh = session.get(RefreshRow, asin)
-    if refresh is None:
-        return RefreshInfo(
-            asin=asin,
-            last_price_date=last_price_date,
+    unique = list(dict.fromkeys(asins))
+    rows = {
+        row.asin: row
+        for row in session.scalars(
+            select(ProductRow).where(ProductRow.asin.in_(unique))
         )
-
-    return RefreshInfo(
-        asin=asin,
-        status=refresh.status,
-        requested_at=refresh.requested_at,
-        finished_at=refresh.finished_at,
-        error=refresh.error,
-        last_price_date=last_price_date,
-    )
+    }
+    if missing := [asin for asin in unique if asin not in rows]:
+        raise UnknownProduct(f"No product with ASIN {', '.join(missing)}")
+    return [rows[asin] for asin in unique]
 
 
-def queue_refresh(session: Session, asin: str) -> RefreshInfo:
-    """Queue a refresh, or return the current one if pending, running or recent.
+def _refreshes(session: Session, asins: list[str]) -> dict[str, RefreshRow]:
+    query = select(RefreshRow).where(RefreshRow.asin.in_(asins))
+    return {row.asin: row for row in session.scalars(query)}
 
-    "Recent" means requested within ``settings.refresh_cooldown_minutes``.
+
+def refresh_status(session: Session, asins: list[str]) -> list[RefreshInfo]:
+    """Each product's latest refresh request and the date of its newest price.
 
     Raises:
-        UnknownProduct: No product has this ASIN.
-        NotTracked: The product exists but is not tracked.
+        UnknownProduct: Some ASINs have no product.
     """
-    if not product_row(session, asin).tracked:
-        raise NotTracked(f"Product {asin} is not tracked")
+    unique = [row.asin for row in product_rows(session, asins)]
+    last_price_dates = dict(
+        session.execute(
+            select(PriceRow.asin, func.max(PriceRow.date))
+            .where(PriceRow.asin.in_(unique))
+            .group_by(PriceRow.asin)
+        ).all()
+    )
+    refreshes = _refreshes(session, unique)
+    infos = []
+    for asin in unique:
+        info = RefreshInfo(asin=asin, last_price_date=last_price_dates.get(asin))
+        if refresh := refreshes.get(asin):
+            info.status = refresh.status
+            info.requested_at = refresh.requested_at
+            info.finished_at = refresh.finished_at
+            info.error = refresh.error
+        infos.append(info)
+    return infos
+
+
+def queue_refresh(session: Session, asins: list[str]) -> list[RefreshInfo]:
+    """Queue a refresh of each product, all or none.
+
+    A product whose refresh is pending, running or recent keeps it. "Recent"
+    means requested within ``settings.refresh_cooldown_minutes``.
+
+    Raises:
+        UnknownProduct: Some ASINs have no product; nothing is queued.
+        NotTracked: Some products are not tracked; nothing is queued.
+    """
+    rows = product_rows(session, asins)
+    if untracked := [row.asin for row in rows if not row.tracked]:
+        raise NotTracked(f"Not tracked: {', '.join(untracked)}")
+    unique = [row.asin for row in rows]
     now = datetime.datetime.now(datetime.UTC)
     cooldown = datetime.timedelta(minutes=settings.refresh_cooldown_minutes)
-    refresh = session.get(RefreshRow, asin)
-    if refresh is None:
-        refresh = RefreshRow(asin=asin)
-        session.add(refresh)
-    elif (
-        refresh.status in ("pending", "running")
-        or now - _as_utc(refresh.requested_at) < cooldown
-    ):
-        return refresh_status(session, asin)
-
-    refresh.status = "pending"
-    refresh.requested_at = datetime.datetime.now(datetime.UTC)
-    refresh.finished_at = None
-    refresh.error = None
+    refreshes = _refreshes(session, unique)
+    for asin in unique:
+        refresh = refreshes.get(asin)
+        if refresh is None:
+            refresh = RefreshRow(asin=asin)
+            session.add(refresh)
+        elif (
+            refresh.status in ("pending", "running")
+            or now - _as_utc(refresh.requested_at) < cooldown
+        ):
+            continue
+        refresh.status = "pending"
+        refresh.requested_at = now
+        refresh.finished_at = None
+        refresh.error = None
     session.commit()
-
-    return refresh_status(session, asin)
+    return refresh_status(session, unique)

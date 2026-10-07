@@ -8,6 +8,7 @@ from app.db.models import PriceRow, ProductRow, RefreshRow
 from app.products import PricePoint, Product, ProductSummary
 
 ASIN = "B0BMG3FBND"
+OTHER = "B0BNLSDRKB"
 DAY = datetime.date(2023, 2, 11)
 LONG_AGO = datetime.datetime(2020, 1, 1, tzinfo=datetime.UTC)
 
@@ -197,7 +198,7 @@ def test_price_summary_rejects_unknown_asin(session: Session) -> None:
 def test_queue_refresh_creates_pending_request(session: Session) -> None:
     session.add(ProductRow(asin=ASIN))
     session.commit()
-    info = products.queue_refresh(session, ASIN)
+    [info] = products.queue_refresh(session, [ASIN])
     assert info.status == "pending"
     assert info.requested_at is not None
 
@@ -205,8 +206,8 @@ def test_queue_refresh_creates_pending_request(session: Session) -> None:
 def test_queue_refresh_within_cooldown_returns_same_request(session: Session) -> None:
     session.add(ProductRow(asin=ASIN))
     session.commit()
-    first = products.queue_refresh(session, ASIN)
-    assert products.queue_refresh(session, ASIN) == first
+    first = products.queue_refresh(session, [ASIN])
+    assert products.queue_refresh(session, [ASIN]) == first
 
 
 def test_queue_refresh_after_cooldown_requeues_and_clears_last_outcome(
@@ -223,7 +224,7 @@ def test_queue_refresh_after_cooldown_requeues_and_clears_last_outcome(
         )
     )
     session.commit()
-    info = products.queue_refresh(session, ASIN)
+    [info] = products.queue_refresh(session, [ASIN])
     assert (info.status, info.finished_at, info.error) == ("pending", None, None)
 
 
@@ -231,19 +232,26 @@ def test_queue_refresh_leaves_running_request_alone(session: Session) -> None:
     session.add(ProductRow(asin=ASIN))
     session.add(RefreshRow(asin=ASIN, status="running", requested_at=LONG_AGO))
     session.commit()
-    assert products.queue_refresh(session, ASIN).status == "running"
+    [info] = products.queue_refresh(session, [ASIN])
+    assert info.status == "running"
 
 
-def test_queue_refresh_rejects_untracked_product(session: Session) -> None:
-    session.add(ProductRow(asin=ASIN, tracked=False))
+def test_queue_refresh_queues_nothing_if_one_product_is_untracked(
+    session: Session,
+) -> None:
+    session.add_all([ProductRow(asin=ASIN), ProductRow(asin=OTHER, tracked=False)])
     session.commit()
-    with pytest.raises(products.NotTracked):
-        products.queue_refresh(session, ASIN)
+    with pytest.raises(products.NotTracked, match=OTHER):
+        products.queue_refresh(session, [ASIN, OTHER])
+    assert session.get(RefreshRow, ASIN) is None
 
 
-def test_queue_refresh_rejects_unknown_asin(session: Session) -> None:
-    with pytest.raises(products.UnknownProduct):
-        products.queue_refresh(session, ASIN)
+def test_queue_refresh_names_every_unknown_asin(session: Session) -> None:
+    session.add(ProductRow(asin=ASIN))
+    session.commit()
+    with pytest.raises(products.UnknownProduct, match="B000000001, B000000002"):
+        products.queue_refresh(session, [ASIN, "B000000001", "B000000002"])
+    assert session.get(RefreshRow, ASIN) is None
 
 
 def test_refresh_status_of_never_refreshed_product(session: Session) -> None:
@@ -255,9 +263,9 @@ def test_refresh_status_of_never_refreshed_product(session: Session) -> None:
         ]
     )
     session.commit()
-    assert products.refresh_status(session, ASIN) == products.RefreshInfo(
-        asin=ASIN, last_price_date=DAY
-    )
+    assert products.refresh_status(session, [ASIN]) == [
+        products.RefreshInfo(asin=ASIN, last_price_date=DAY)
+    ]
 
 
 def test_refresh_status_reports_why_the_last_refresh_failed(session: Session) -> None:
@@ -272,10 +280,19 @@ def test_refresh_status_reports_why_the_last_refresh_failed(session: Session) ->
         )
     )
     session.commit()
-    info = products.refresh_status(session, ASIN)
+    [info] = products.refresh_status(session, [ASIN])
     assert (info.status, info.error) == ("failed", "HTTP 503")
+
+
+def test_refresh_status_keeps_request_order_without_duplicates(
+    session: Session,
+) -> None:
+    session.add_all([ProductRow(asin=ASIN), ProductRow(asin=OTHER)])
+    session.commit()
+    infos = products.refresh_status(session, [OTHER, ASIN, OTHER])
+    assert [info.asin for info in infos] == [OTHER, ASIN]
 
 
 def test_refresh_status_rejects_unknown_asin(session: Session) -> None:
     with pytest.raises(products.UnknownProduct):
-        products.refresh_status(session, ASIN)
+        products.refresh_status(session, [ASIN])

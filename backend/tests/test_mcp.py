@@ -94,31 +94,33 @@ async def test_price_summary_covers_only_the_window(
     assert (summary["lowest_price"], summary["highest_price"]) == (1100.0, 1100.0)
 
 
-async def test_new_tracker_can_be_refreshed_once_per_cooldown(
+async def test_new_trackers_can_be_refreshed_once_per_cooldown(
     client: Client[FastMCPTransport],
 ) -> None:
     added = await call(client, "add_tracker", {"url": f"https://amazon.es/dp/{NEW}"})
     assert added == {"asin": NEW, "name": None, "price": None, "price_date": None}
-    status = await call(client, "get_refresh_status", {"asin": NEW})
+    [status] = (await call(client, "get_refresh_status", {"asins": [NEW]}))["result"]
     assert status["status"] is None
 
-    queued = await call(client, "request_refresh", {"asin": NEW})
-    assert queued["status"] == "pending"
-    assert await call(client, "request_refresh", {"asin": NEW}) == queued
-    assert await call(client, "get_refresh_status", {"asin": NEW}) == queued
+    queued = await call(client, "request_refresh", {"asins": [NEW, TRACKED]})
+    assert [r["status"] for r in queued["result"]] == ["pending", "pending"]
+    assert await call(client, "request_refresh", {"asins": [NEW, TRACKED]}) == queued
+    assert await call(client, "get_refresh_status", {"asins": [NEW, TRACKED]}) == queued
 
 
 @pytest.mark.parametrize(
     ("tool", "args", "message"),
     [
         ("get_price_summary", {"asin": "B000000009", "days": 7}, "No product"),
-        ("get_refresh_status", {"asin": "B000000009"}, "No product"),
-        ("request_refresh", {"asin": UNTRACKED}, "not tracked"),
+        ("get_refresh_status", {"asins": ["B000000009"]}, "No product"),
+        ("request_refresh", {"asins": [TRACKED, UNTRACKED]}, "Not tracked"),
         ("add_tracker", {"url": TRACKED}, "Already tracking"),
         ("add_tracker", {"url": "https://www.amazon.es/s?k=rtx"}, "ASIN"),
         # Rejected by the input schema before the tool runs
         ("get_price_history", {"asin": TRACKED.lower(), "days": 7}, "pattern"),
         ("get_price_history", {"asin": TRACKED, "days": 0}, "greater than"),
+        ("request_refresh", {"asins": []}, "at least 1"),
+        ("request_refresh", {"asins": [TRACKED] * 51}, "at most 50"),
     ],
 )
 async def test_errors_reach_the_agent_with_a_reason(
