@@ -151,6 +151,49 @@ def test_price_history_rejects_unknown_asin(session: Session) -> None:
         products.price_history(session, ASIN, 7)
 
 
+def test_price_summary_of_the_window(session: Session) -> None:
+    today = datetime.date.today()
+    session.add(ProductRow(asin=ASIN, name="RTX 5070 Ti"))
+    session.add_all(
+        [
+            PriceRow(asin=ASIN, date=today, price_cents=100000),
+            PriceRow(asin=ASIN, date=today - datetime.timedelta(1), price_cents=120000),
+            PriceRow(asin=ASIN, date=today - datetime.timedelta(2), price_cents=110050),
+            PriceRow(asin=ASIN, date=today - datetime.timedelta(30), price_cents=1),
+        ]
+    )
+    session.commit()
+    assert products.price_summary(session, ASIN, 7) == products.PriceSummary(
+        asin=ASIN,
+        name="RTX 5070 Ti",
+        latest_price=1000.0,
+        highest_price=1200.0,
+        lowest_price=1000.0,
+        mean_price=1100.17,
+        median_price=1100.5,
+    )
+
+
+def test_price_summary_without_prices_in_the_window_is_empty(session: Session) -> None:
+    session.add(ProductRow(asin=ASIN))
+    session.add(
+        PriceRow(
+            asin=ASIN,
+            date=datetime.date.today() - datetime.timedelta(30),
+            price_cents=100000,
+        )
+    )
+    session.commit()
+    assert products.price_summary(session, ASIN, 7) == products.PriceSummary(
+        asin=ASIN, name=None
+    )
+
+
+def test_price_summary_rejects_unknown_asin(session: Session) -> None:
+    with pytest.raises(products.UnknownProduct):
+        products.price_summary(session, ASIN, 7)
+
+
 def test_queue_refresh_creates_pending_request(session: Session) -> None:
     session.add(ProductRow(asin=ASIN))
     session.commit()

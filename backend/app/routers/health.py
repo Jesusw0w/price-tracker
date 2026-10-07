@@ -22,7 +22,8 @@ def readiness(session: SessionDep) -> dict[str, str]:
     """Database is reachable.
 
     \f
-    :raises HTTPException: 503 if the database cannot be reached.
+    Raises:
+        HTTPException: 503 if the database cannot be reached.
     """
     try:
         session.execute(text("SELECT 1"))

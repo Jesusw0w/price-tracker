@@ -97,6 +97,20 @@ def test_rescrape_same_day_overwrites_and_missing_price_is_skipped(
     assert session.get_one(ProductRow, TRACKED).name == "RX 7900 XT"
 
 
+def test_mcp_answers_stateless_json_at_mcp() -> None:
+    # The with-block runs the lifespan; without it the MCP session manager never starts
+    with TestClient(create_app()) as client:
+        response = client.post(
+            "/mcp",
+            json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+            headers={"Accept": "application/json, text/event-stream"},
+        )
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/json"
+    tools = response.json()["result"]["tools"]
+    assert "list_trackers" in {t["name"] for t in tools}
+
+
 def test_liveness_needs_no_database() -> None:
     assert TestClient(create_app()).get("/health").json() == {"status": "ok"}
 

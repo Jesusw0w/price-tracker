@@ -71,7 +71,7 @@ class RefreshInfo(BaseModel):
 
 
 def _as_utc(moment: datetime.datetime) -> datetime.datetime:
-    """Ensure date and hours are set to UTC."""
+    """Treat a naive datetime as UTC; SQLite drops the timezone Postgres keeps."""
     return moment if moment.tzinfo else moment.replace(tzinfo=datetime.UTC)
 
 
@@ -128,7 +128,7 @@ def track(session: Session, link: str) -> Product:
 
 
 def summarize(product: Product) -> ProductSummary:
-    """Generate a summary of the product with latest price."""
+    """The product's latest price; price fields are ``None`` if never scraped."""
     latest_record = product.history[-1] if product.history else None
 
     return ProductSummary(
@@ -195,13 +195,12 @@ def price_summary(session: Session, asin: str, days: int) -> PriceSummary:
     )
 
 
-def request_refresh(session: Session, asin: str) -> None:
-    """Request a new refresh of product data."""
-    product_row(session, asin)
-
-
 def refresh_status(session: Session, asin: str) -> RefreshInfo:
-    """Refresh a product status."""
+    """The product's latest refresh request and the date of its newest price.
+
+    Raises:
+        UnknownProduct: No product has this ASIN.
+    """
     product_row(session, asin)
     last_price_date = session.scalar(
         select(func.max(PriceRow.date)).where(PriceRow.asin == asin)
@@ -225,7 +224,14 @@ def refresh_status(session: Session, asin: str) -> RefreshInfo:
 
 
 def queue_refresh(session: Session, asin: str) -> RefreshInfo:
-    """Queue a refresh request."""
+    """Queue a refresh, or return the current one if pending, running or recent.
+
+    "Recent" means requested within ``settings.refresh_cooldown_minutes``.
+
+    Raises:
+        UnknownProduct: No product has this ASIN.
+        NotTracked: The product exists but is not tracked.
+    """
     if not product_row(session, asin).tracked:
         raise NotTracked(f"Product {asin} is not tracked")
     now = datetime.datetime.now(datetime.UTC)

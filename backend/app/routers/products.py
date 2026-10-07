@@ -30,7 +30,8 @@ def track_product(body: NewProduct, session: SessionDep) -> Product:
     """Start tracking a product. If it was tracked before, its price history is kept.
 
     \f
-    :raises HTTPException: 422 if the link has no ASIN, 409 if already tracked.
+    Raises:
+        HTTPException: 422 if the link has no ASIN, 409 if already tracked.
     """
     try:
         return track(session, body.link)
@@ -45,7 +46,8 @@ def untrack_product(asin: Asin, session: SessionDep) -> Response:
     """Stop tracking a product. Its price history is kept.
 
     \f
-    :raises HTTPException: 404 if not tracked.
+    Raises:
+        HTTPException: 404 if not tracked.
     """
     row = session.get(ProductRow, asin)
     if row is None or not row.tracked:

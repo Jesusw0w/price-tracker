@@ -6,7 +6,7 @@ from app.routers import health, products
 
 
 def create_app() -> FastAPI:
-    """Create Backend FastAPI and MCP apps and add the necessary middleware and routes."""
+    """Create the FastAPI app with the MCP app, middleware and routes."""
     mcp_app = mcp.http_app(path="/mcp", stateless_http=True, json_response=True)
     app = FastAPI(title="Price Tracker", lifespan=mcp_app.lifespan)
 
