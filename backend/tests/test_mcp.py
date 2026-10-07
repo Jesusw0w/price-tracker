@@ -1,6 +1,6 @@
 import datetime
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Any, Final
 
 import pytest
 from fastmcp import Client
@@ -13,10 +13,11 @@ from app.mcp.mcp import mcp
 
 pytestmark = pytest.mark.anyio
 
-TRACKED = "B0BMG3FBND"
-UNTRACKED = "B000000001"
-NEW = "B0BNLSDRKB"
-TODAY = datetime.date.today()
+TRACKED: Final[int] = 1
+UNTRACKED: Final[int] = 2
+TRACKED_URL: Final[str] = "https://www.amazon.es/dp/B0BMG3FBND"
+NEW_URL: Final[str] = "https://shop.example/p/gpu"
+TODAY: Final[datetime.date] = datetime.date.today()
 
 
 @pytest.fixture
@@ -25,11 +26,24 @@ async def client(
 ) -> AsyncIterator[Client[FastMCPTransport]]:
     session.add_all(
         [
-            ProductRow(asin=TRACKED, name="RX 7900 XT"),
-            ProductRow(asin=UNTRACKED, tracked=False),
-            PriceRow(asin=TRACKED, date=TODAY, price_cents=110000),
+            ProductRow(
+                id=TRACKED,
+                url=TRACKED_URL,
+                domain="amazon.es",
+                name="RX 7900 XT",
+                currency="EUR",
+            ),
+            ProductRow(
+                id=UNTRACKED,
+                url="https://shop.example/p/old",
+                domain="shop.example",
+                tracked=False,
+            ),
+            PriceRow(product_id=TRACKED, date=TODAY, price_cents=110000),
             PriceRow(
-                asin=TRACKED, date=TODAY - datetime.timedelta(2), price_cents=120000
+                product_id=TRACKED,
+                date=TODAY - datetime.timedelta(2),
+                price_cents=120000,
             ),
         ]
     )
@@ -68,8 +82,10 @@ async def test_list_trackers_gives_latest_price(
     assert await call(client, "list_trackers", {}) == {
         "result": [
             {
-                "asin": TRACKED,
+                "id": TRACKED,
+                "url": TRACKED_URL,
                 "name": "RX 7900 XT",
+                "currency": "EUR",
                 "price": 1100.0,
                 "price_date": TODAY.isoformat(),
             }
@@ -78,7 +94,8 @@ async def test_list_trackers_gives_latest_price(
 
 
 async def test_price_history_is_oldest_first(client: Client[FastMCPTransport]) -> None:
-    history = await call(client, "get_price_history", {"asin": TRACKED, "days": 7})
+    args = {"product_id": TRACKED, "days": 7}
+    history = await call(client, "get_price_history", args)
     assert history == {
         "result": [
             {"date": (TODAY - datetime.timedelta(2)).isoformat(), "price": 1200.0},
@@ -90,37 +107,49 @@ async def test_price_history_is_oldest_first(client: Client[FastMCPTransport]) -
 async def test_price_summary_covers_only_the_window(
     client: Client[FastMCPTransport],
 ) -> None:
-    summary = await call(client, "get_price_summary", {"asin": TRACKED, "days": 1})
+    args = {"product_id": TRACKED, "days": 1}
+    summary = await call(client, "get_price_summary", args)
     assert (summary["lowest_price"], summary["highest_price"]) == (1100.0, 1100.0)
 
 
 async def test_new_trackers_can_be_refreshed_once_per_cooldown(
     client: Client[FastMCPTransport],
 ) -> None:
-    added = await call(client, "add_tracker", {"url": f"https://amazon.es/dp/{NEW}"})
-    assert added == {"asin": NEW, "name": None, "price": None, "price_date": None}
-    [status] = (await call(client, "get_refresh_status", {"asins": [NEW]}))["result"]
+    added = await call(client, "add_tracker", {"url": NEW_URL + "#specs"})
+    new = added["id"]
+    assert added == {
+        "id": new,
+        "url": NEW_URL,
+        "name": None,
+        "currency": None,
+        "price": None,
+        "price_date": None,
+    }
+    ids = {"product_ids": [new]}
+    [status] = (await call(client, "get_refresh_status", ids))["result"]
     assert status["status"] is None
 
-    queued = await call(client, "request_refresh", {"asins": [NEW, TRACKED]})
+    both = {"product_ids": [new, TRACKED]}
+    queued = await call(client, "request_refresh", both)
     assert [r["status"] for r in queued["result"]] == ["pending", "pending"]
-    assert await call(client, "request_refresh", {"asins": [NEW, TRACKED]}) == queued
-    assert await call(client, "get_refresh_status", {"asins": [NEW, TRACKED]}) == queued
+    assert await call(client, "request_refresh", both) == queued
+    assert await call(client, "get_refresh_status", both) == queued
 
 
 @pytest.mark.parametrize(
     ("tool", "args", "message"),
     [
-        ("get_price_summary", {"asin": "B000000009", "days": 7}, "No product"),
-        ("get_refresh_status", {"asins": ["B000000009"]}, "No product"),
-        ("request_refresh", {"asins": [TRACKED, UNTRACKED]}, "Not tracked"),
-        ("add_tracker", {"url": TRACKED}, "Already tracking"),
-        ("add_tracker", {"url": "https://www.amazon.es/s?k=rtx"}, "ASIN"),
+        ("get_price_summary", {"product_id": 9, "days": 7}, "No product"),
+        ("get_refresh_status", {"product_ids": [9]}, "No product"),
+        ("request_refresh", {"product_ids": [TRACKED, UNTRACKED]}, "Not tracked"),
+        ("add_tracker", {"url": TRACKED_URL}, "Already tracking"),
+        ("add_tracker", {"url": "http://shop.example/p/1"}, "https://"),
+        ("add_tracker", {"url": "https://10.0.0.1/admin"}, "public website"),
         # Rejected by the input schema before the tool runs
-        ("get_price_history", {"asin": TRACKED.lower(), "days": 7}, "pattern"),
-        ("get_price_history", {"asin": TRACKED, "days": 0}, "greater than"),
-        ("request_refresh", {"asins": []}, "at least 1"),
-        ("request_refresh", {"asins": [TRACKED] * 51}, "at most 50"),
+        ("get_price_history", {"product_id": 0, "days": 7}, "greater than"),
+        ("get_price_history", {"product_id": TRACKED, "days": 0}, "greater than"),
+        ("request_refresh", {"product_ids": []}, "at least 1"),
+        ("request_refresh", {"product_ids": [TRACKED] * 51}, "at most 50"),
     ],
 )
 async def test_errors_reach_the_agent_with_a_reason(

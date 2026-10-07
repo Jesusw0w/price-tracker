@@ -10,6 +10,7 @@ class Settings(BaseSettings):
 
     database_url: str
     refresh_cooldown_minutes: int = 30
+    max_trackers: int = 100
 
 
 settings = Settings()  # type: ignore[call-arg]  # mypy cannot see fields filled from env

@@ -12,9 +12,10 @@ describe('App', () => {
       .expectOne('/api/products')
       .flush([
         {
-          asin: 'B0BMG3FBND',
+          id: 1,
           url: 'https://www.amazon.es/dp/B0BMG3FBND',
           name: 'Sapphire RX 7900 XT',
+          currency: 'EUR',
           history: [
             { date: '2023-06-01', price: 1000 },
             { date: '2023-06-02', price: 950 },

@@ -17,13 +17,14 @@ import {
   type ChartDataset,
   type Plugin,
 } from 'chart.js';
-import { eur } from '../products';
+import { money } from '../products';
 
 Chart.register(LineController, LineElement, PointElement, LinearScale, Tooltip);
 
 export interface Series {
   label: string;
   color: string;
+  currency: string | null;
   points: { x: number; y: number }[];
 }
 
@@ -194,6 +195,10 @@ export class PriceChart {
       frame = chart.data.datasets.some((ds) => wipes.has(ds)) ? requestAnimationFrame(tick) : 0;
     };
 
+    // One shared axis can only carry a currency symbol when every line uses it
+    let axisCurrency: string | null = null;
+    const currencyOf = new Map<string, string | null>();
+
     afterRenderEffect(() => {
       chart ??= new Chart(this.canvas().nativeElement, {
         type: 'line',
@@ -218,7 +223,7 @@ export class PriceChart {
             y: {
               grid: { color: GRID },
               border: { display: false },
-              ticks: { color: MUTED, callback: (v) => eur(Number(v)) },
+              ticks: { color: MUTED, callback: (v) => money(Number(v), axisCurrency) },
             },
           },
           plugins: {
@@ -233,7 +238,8 @@ export class PriceChart {
               itemSort: (a, b) => (b.parsed.y ?? 0) - (a.parsed.y ?? 0),
               callbacks: {
                 title: ([item]) => (item ? longDate.format(item.parsed.x ?? 0) : ''),
-                label: (item) => `${eur(item.parsed.y ?? 0)}  ${item.dataset.label}`,
+                label: (item) =>
+                  `${money(item.parsed.y ?? 0, currencyOf.get(item.dataset.label ?? '') ?? null)}  ${item.dataset.label}`,
                 labelPointStyle: () => ({ pointStyle: 'line', rotation: 0 }),
               },
             },
@@ -241,10 +247,15 @@ export class PriceChart {
         },
       });
 
+      const series = this.series();
+      const currencies = new Set(series.map((s) => s.currency));
+      axisCurrency = currencies.size === 1 ? [...currencies][0] : null;
+      for (const s of series) currencyOf.set(s.label, s.currency);
+
       const now = performance.now();
       const leaving = new Map(chart.data.datasets.map((ds) => [ds.label, ds]));
       const fresh: LineDataset[] = [];
-      const datasets = this.series().map((s) => {
+      const datasets = series.map((s) => {
         let ds = leaving.get(s.label);
         leaving.delete(s.label);
         if (ds) {

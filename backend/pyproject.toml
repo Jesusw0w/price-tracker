@@ -1,7 +1,7 @@
 [project]
 name = "gpu-price-tracker"
 version = "0.1.0"
-description = "Amazon.es GPU price tracker"
+description = "Product price tracker for online shops"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.14"

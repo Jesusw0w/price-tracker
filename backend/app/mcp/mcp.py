@@ -1,7 +1,7 @@
 """MCP tools for reading price history and managing trackers.
 
 Read: list_trackers, get_price_history, get_price_summary, get_refresh_status.
-Write: add_tracker (Amazon.es only, max N), request_refresh (with a cooldown).
+Write: add_tracker (any https shop, capped), request_refresh (with a cooldown).
 
 There are no delete tools. Every tool uses the same service layer as /api.
 """
@@ -14,15 +14,16 @@ from fastmcp.exceptions import ToolError
 from pydantic import Field
 
 from app.db.database import SessionLocal
+from app.links import InvalidLink
 from app.products import (
     AlreadyTracked,
-    Asin,
-    InvalidLink,
     NotTracked,
     PricePoint,
     PriceSummary,
+    ProductId,
     ProductSummary,
     RefreshInfo,
+    TooManyTrackers,
     UnknownProduct,
     price_history,
     price_summary,
@@ -34,14 +35,14 @@ from app.products import (
 )
 
 Days = Annotated[int, Field(ge=1)]
-Asins = Annotated[list[Asin], Field(min_length=1, max_length=50)]
+ProductIds = Annotated[list[ProductId], Field(min_length=1, max_length=50)]
 
-mcp = FastMCP(name="Amazon Price Tracker")
+mcp = FastMCP(name="Price Tracker", mask_error_details=True)
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": False})
 def list_trackers() -> list[ProductSummary]:
-    """List tracked products and their latest EUR price. Call this first for ASINs.
+    """List tracked products and their latest price. Call this first for ids.
 
     Price is null for products not scraped yet.
     """
@@ -50,67 +51,69 @@ def list_trackers() -> list[ProductSummary]:
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": False})
-def get_price_history(asin: Asin, days: Days) -> list[PricePoint]:
-    """Daily EUR prices, oldest first. Days without a scrape are omitted.
+def get_price_history(product_id: ProductId, days: Days) -> list[PricePoint]:
+    """Daily prices in the product's currency, oldest first. Unscraped days omitted.
 
     Args:
-        asin: ASIN from list_trackers.
+        product_id: Id from list_trackers.
         days: Days to look back, plus today.
     """
     with SessionLocal() as session:
         try:
-            return price_history(session, asin, days)
+            return price_history(session, product_id, days)
         except UnknownProduct as e:
             raise ToolError(str(e)) from e
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": False})
-def get_price_summary(asin: Asin, days: Days) -> PriceSummary:
-    """Latest, lowest, highest, mean and median EUR price, or nulls if no data.
+def get_price_summary(product_id: ProductId, days: Days) -> PriceSummary:
+    """Latest, lowest, highest, mean and median price, or nulls if no data.
 
     Args:
-        asin: ASIN from list_trackers.
+        product_id: Id from list_trackers.
         days: Days to look back, plus today.
     """
     with SessionLocal() as session:
         try:
-            return price_summary(session, asin, days)
+            return price_summary(session, product_id, days)
         except UnknownProduct as e:
             raise ToolError(str(e)) from e
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": False})
-def get_refresh_status(asins: Asins) -> list[RefreshInfo]:
+def get_refresh_status(product_ids: ProductIds) -> list[RefreshInfo]:
     """Latest refresh of each product and the date of its newest price.
 
     Status is null if no refresh was ever requested. If it failed, error says why.
 
     Args:
-        asins: ASINs from list_trackers.
+        product_ids: Ids from list_trackers.
     """
     with SessionLocal() as session:
         try:
-            return refresh_status(session, asins)
+            return refresh_status(session, product_ids)
         except UnknownProduct as e:
             raise ToolError(str(e)) from e
 
 
 @mcp.tool(annotations={"destructiveHint": False, "openWorldHint": False})
 def add_tracker(url: str) -> ProductSummary:
-    """Track an Amazon.es product. A new product has no price until refreshed.
+    """Track a product from an online shop. It has no price until refreshed.
+
+    Shops without readable price data fail on refresh, and the error says why.
 
     Args:
-        url: Amazon product link or bare ASIN.
+        url: https link to the product page, or a bare ASIN for Amazon.es.
     """
     with SessionLocal() as session:
         try:
             return summarize(track(session, url))
-        except (InvalidLink, AlreadyTracked) as e:
+        except (InvalidLink, AlreadyTracked, TooManyTrackers) as e:
             raise ToolError(str(e)) from e
 
 
 # @mcp.tool(annotations={"idempotentHint": True, "openWorldHint": False})
-# def set_target_price(asin: Asin, price: int) -> None:
+# def set_target_price(product_id: ProductId, price: int) -> None:
 #     """Set a product's target price in cents."""
 #     pass
 
@@ -122,23 +125,24 @@ def add_tracker(url: str) -> ProductSummary:
         "openWorldHint": True,
     }
 )
-def request_refresh(asins: Asins) -> list[RefreshInfo]:
+def request_refresh(product_ids: ProductIds) -> list[RefreshInfo]:
     """Queue price scrapes. Returns at once, so poll get_refresh_status.
 
-    A product with a pending, running or recent request keeps it. If any ASIN
-    is unknown or untracked, nothing is queued.
+    A product with a pending, running or recent request keeps it. If any id is
+    unknown or untracked, nothing is queued. The scraper runs on a home machine
+    and may be offline, so pending can last hours.
 
     Args:
-        asins: ASINs from list_trackers.
+        product_ids: Ids from list_trackers.
     """
     with SessionLocal() as session:
         try:
-            return queue_refresh(session, asins)
+            return queue_refresh(session, product_ids)
         except (UnknownProduct, NotTracked) as e:
             raise ToolError(str(e)) from e
 
 
 # @mcp.tool(annotations={"readOnlyHint": True})
-# def is_a_good_deal(asin: Asin) -> None:
+# def is_a_good_deal(product_id: ProductId) -> None:
 #     """Identify if a product is currently a good deal."""
 #     pass

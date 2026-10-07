@@ -12,8 +12,11 @@ RefreshStatus = Literal["pending", "running", "done", "failed"]
 class ProductRow(Base):
     __tablename__ = "products"
 
-    asin: Mapped[str] = mapped_column(String(10), primary_key=True)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    url: Mapped[str] = mapped_column(String(2048), unique=True)  # canonical form
+    domain: Mapped[str]  # picks the parser; "www." stripped
     name: Mapped[str | None]  # None until first scraped
+    currency: Mapped[str | None] = mapped_column(String(3))  # ISO 4217
     tracked: Mapped[bool] = mapped_column(default=True)
     added_at: Mapped[datetime.date] = mapped_column(default=datetime.date.today)
 
@@ -23,9 +26,9 @@ class ProductRow(Base):
 class PriceRow(Base):
     __tablename__ = "prices"
 
-    asin: Mapped[str] = mapped_column(ForeignKey("products.asin"), primary_key=True)
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), primary_key=True)
     date: Mapped[datetime.date] = mapped_column(primary_key=True)
-    price_cents: Mapped[int]
+    price_cents: Mapped[int]  # price x 100, in the product's currency
 
 
 class RefreshRow(Base):
@@ -33,7 +36,7 @@ class RefreshRow(Base):
 
     __tablename__ = "refreshes"
 
-    asin: Mapped[str] = mapped_column(ForeignKey("products.asin"), primary_key=True)
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), primary_key=True)
     status: Mapped[RefreshStatus]
     requested_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime.datetime | None] = mapped_column(

@@ -1,5 +1,5 @@
-# Amazon Price Tracker
-Price tracker for Amazon items, currently there is only data on graphical processing units available, but a feature will be added for you to add your own url.
+# Price Tracker
+Tracks product prices from online shops. Add a product's https link from the UI or through an MCP agent; the scraper reads the price from the page's schema.org data or meta tags, with a dedicated parser for Amazon.
 
 ```
 backend/    FastAPI API, MCP server, scraper, DB models and Alembic migrations

@@ -1,23 +1,17 @@
 import datetime
-import re
 import statistics
 from typing import Annotated
 
-from pydantic import BaseModel, StringConstraints
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.config import settings
 from app.db.models import PriceRow, ProductRow, RefreshRow, RefreshStatus
-
-ASIN_RE = re.compile(r"(?:/dp/|/gp/product/|^)([A-Z0-9]{10})(?:[/?#]|$)", re.IGNORECASE)
+from app.links import canonical_url, site
 
 # FastAPI path params and MCP tool args validate the same way
-Asin = Annotated[str, StringConstraints(pattern=r"^[A-Z0-9]{10}$")]
-
-
-class InvalidLink(ValueError):
-    pass
+ProductId = Annotated[int, Field(ge=1)]
 
 
 class AlreadyTracked(Exception):
@@ -32,28 +26,36 @@ class NotTracked(Exception):
     pass
 
 
+class TooManyTrackers(Exception):
+    pass
+
+
 class PricePoint(BaseModel):
     date: datetime.date
-    price: float  # euros
+    price: float  # in the product's currency
 
 
 class Product(BaseModel):
-    asin: str
+    id: int
     url: str
     name: str | None = None
+    currency: str | None = None
     history: list[PricePoint]  # oldest first
 
 
 class ProductSummary(BaseModel):
-    asin: str
+    id: int
+    url: str
     name: str | None = None
+    currency: str | None = None
     price: float | None = None
     price_date: datetime.date | None = None
 
 
 class PriceSummary(BaseModel):
-    asin: str
+    id: int
     name: str | None
+    currency: str | None
     latest_price: float | None = None
     highest_price: float | None = None
     lowest_price: float | None = None
@@ -62,7 +64,7 @@ class PriceSummary(BaseModel):
 
 
 class RefreshInfo(BaseModel):
-    asin: str
+    product_id: int
     status: RefreshStatus | None = None
     requested_at: datetime.datetime | None = None
     finished_at: datetime.datetime | None = None
@@ -75,21 +77,12 @@ def _as_utc(moment: datetime.datetime) -> datetime.datetime:
     return moment if moment.tzinfo else moment.replace(tzinfo=datetime.UTC)
 
 
-def parse_asin(link: str) -> str | None:
-    """Return the upper-cased ASIN from a product URL or bare ASIN, else ``None``."""
-    match = ASIN_RE.search(link.strip())
-    return match.group(1).upper() if match else None
-
-
-def product_url(asin: str) -> str:
-    return f"https://www.amazon.es/dp/{asin}"
-
-
 def to_product(row: ProductRow) -> Product:
     return Product(
-        asin=row.asin,
-        url=product_url(row.asin),
+        id=row.id,
+        url=row.url,
         name=row.name,
+        currency=row.currency,
         history=[
             PricePoint(date=p.date, price=p.price_cents / 100) for p in row.prices
         ],
@@ -100,7 +93,7 @@ def tracked_products(session: Session) -> list[Product]:
     rows = session.scalars(
         select(ProductRow)
         .where(ProductRow.tracked)
-        .order_by(ProductRow.added_at, ProductRow.asin)
+        .order_by(ProductRow.added_at, ProductRow.id)
         .options(selectinload(ProductRow.prices))  # one query for all histories
     )
     return [to_product(row) for row in rows]
@@ -110,18 +103,23 @@ def track(session: Session, link: str) -> Product:
     """Start tracking a product. If it was tracked before, its price history is kept.
 
     Raises:
-        InvalidLink: The link has no ASIN.
+        InvalidLink: The link is not an https link to a public website.
         AlreadyTracked: The product is already tracked.
+        TooManyTrackers: ``settings.max_trackers`` products are tracked already.
     """
-    asin = parse_asin(link)
-    if asin is None:
-        raise InvalidLink("Paste an Amazon product link or a 10-character ASIN")
-    row = session.get(ProductRow, asin)
-    if row is None:
-        row = ProductRow(asin=asin)
-        session.add(row)
-    elif row.tracked:
+    url = canonical_url(link)
+    row = session.scalar(select(ProductRow).where(ProductRow.url == url))
+    if row is not None and row.tracked:
         raise AlreadyTracked("Already tracking this product")
+    # Every tracker costs a scrape; the cap bounds what a looping agent can queue
+    tracked = session.scalar(
+        select(func.count()).select_from(ProductRow).where(ProductRow.tracked)
+    )
+    if (tracked or 0) >= settings.max_trackers:
+        raise TooManyTrackers(f"Tracking the maximum of {settings.max_trackers}")
+    if row is None:
+        row = ProductRow(url=url, domain=site(url))
+        session.add(row)
     row.tracked = True
     session.commit()
     return to_product(row)
@@ -132,37 +130,39 @@ def summarize(product: Product) -> ProductSummary:
     latest_record = product.history[-1] if product.history else None
 
     return ProductSummary(
-        asin=product.asin,
+        id=product.id,
+        url=product.url,
         name=product.name,
+        currency=product.currency,
         price=latest_record.price if latest_record else None,
         price_date=latest_record.date if latest_record else None,
     )
 
 
-def product_row(session: Session, asin: str) -> ProductRow:
+def product_row(session: Session, product_id: int) -> ProductRow:
     """Return the product, tracked or not.
 
     Raises:
-        UnknownProduct: No product has this ASIN.
+        UnknownProduct: No product has this id.
     """
-    row = session.get(ProductRow, asin)
+    row = session.get(ProductRow, product_id)
     if row is None:
-        raise UnknownProduct(f"No product with ASIN {asin}")
+        raise UnknownProduct(f"No product with id {product_id}")
     return row
 
 
-def price_history(session: Session, asin: str, days: int) -> list[PricePoint]:
-    """Return prices from the last ``days`` days plus today, oldest first, in euros.
+def price_history(session: Session, product_id: int, days: int) -> list[PricePoint]:
+    """Return prices from the last ``days`` days plus today, oldest first.
 
     Raises:
-        UnknownProduct: No product has this ASIN.
+        UnknownProduct: No product has this id.
     """
-    product_row(session, asin)
+    product_row(session, product_id)
     filtered_history = session.scalars(
         select(PriceRow)
         .where(
             PriceRow.date >= (datetime.date.today() - datetime.timedelta(days=days)),
-            PriceRow.asin == asin,
+            PriceRow.product_id == product_id,
         )
         .order_by(PriceRow.date)
     )
@@ -171,22 +171,23 @@ def price_history(session: Session, asin: str, days: int) -> list[PricePoint]:
     ]
 
 
-def price_summary(session: Session, asin: str, days: int) -> PriceSummary:
-    """Summarize prices from the last ``days`` days plus today, in euros.
+def price_summary(session: Session, product_id: int, days: int) -> PriceSummary:
+    """Summarize prices from the last ``days`` days plus today.
 
     Price fields are None when no price was recorded in that window.
 
     Raises:
-        UnknownProduct: No product has this ASIN.
+        UnknownProduct: No product has this id.
     """
-    row = product_row(session, asin)
-    prices = [p.price for p in price_history(session, asin, days)]
+    row = product_row(session, product_id)
+    prices = [p.price for p in price_history(session, product_id, days)]
     if not prices:
-        return PriceSummary(asin=asin, name=row.name)
+        return PriceSummary(id=row.id, name=row.name, currency=row.currency)
 
     return PriceSummary(
-        asin=asin,
+        id=row.id,
         name=row.name,
+        currency=row.currency,
         latest_price=prices[-1],
         highest_price=max(prices),
         lowest_price=min(prices),
@@ -195,48 +196,48 @@ def price_summary(session: Session, asin: str, days: int) -> PriceSummary:
     )
 
 
-def product_rows(session: Session, asins: list[str]) -> list[ProductRow]:
+def product_rows(session: Session, product_ids: list[int]) -> list[ProductRow]:
     """Return the products in the order given, without duplicates.
 
     Raises:
-        UnknownProduct: Some ASINs have no product; the message lists them all.
+        UnknownProduct: Some ids have no product; the message lists them all.
     """
-    unique = list(dict.fromkeys(asins))
+    unique = list(dict.fromkeys(product_ids))
     rows = {
-        row.asin: row
-        for row in session.scalars(
-            select(ProductRow).where(ProductRow.asin.in_(unique))
-        )
+        row.id: row
+        for row in session.scalars(select(ProductRow).where(ProductRow.id.in_(unique)))
     }
-    if missing := [asin for asin in unique if asin not in rows]:
-        raise UnknownProduct(f"No product with ASIN {', '.join(missing)}")
-    return [rows[asin] for asin in unique]
+    if missing := [str(i) for i in unique if i not in rows]:
+        raise UnknownProduct(f"No product with id {', '.join(missing)}")
+    return [rows[i] for i in unique]
 
 
-def _refreshes(session: Session, asins: list[str]) -> dict[str, RefreshRow]:
-    query = select(RefreshRow).where(RefreshRow.asin.in_(asins))
-    return {row.asin: row for row in session.scalars(query)}
+def _refreshes(session: Session, product_ids: list[int]) -> dict[int, RefreshRow]:
+    query = select(RefreshRow).where(RefreshRow.product_id.in_(product_ids))
+    return {row.product_id: row for row in session.scalars(query)}
 
 
-def refresh_status(session: Session, asins: list[str]) -> list[RefreshInfo]:
+def refresh_status(session: Session, product_ids: list[int]) -> list[RefreshInfo]:
     """Each product's latest refresh request and the date of its newest price.
 
     Raises:
-        UnknownProduct: Some ASINs have no product.
+        UnknownProduct: Some ids have no product.
     """
-    unique = [row.asin for row in product_rows(session, asins)]
+    unique = [row.id for row in product_rows(session, product_ids)]
     last_price_dates = dict(
         session.execute(
-            select(PriceRow.asin, func.max(PriceRow.date))
-            .where(PriceRow.asin.in_(unique))
-            .group_by(PriceRow.asin)
+            select(PriceRow.product_id, func.max(PriceRow.date))
+            .where(PriceRow.product_id.in_(unique))
+            .group_by(PriceRow.product_id)
         ).all()
     )
     refreshes = _refreshes(session, unique)
     infos = []
-    for asin in unique:
-        info = RefreshInfo(asin=asin, last_price_date=last_price_dates.get(asin))
-        if refresh := refreshes.get(asin):
+    for product_id in unique:
+        info = RefreshInfo(
+            product_id=product_id, last_price_date=last_price_dates.get(product_id)
+        )
+        if refresh := refreshes.get(product_id):
             info.status = refresh.status
             info.requested_at = refresh.requested_at
             info.finished_at = refresh.finished_at
@@ -245,27 +246,27 @@ def refresh_status(session: Session, asins: list[str]) -> list[RefreshInfo]:
     return infos
 
 
-def queue_refresh(session: Session, asins: list[str]) -> list[RefreshInfo]:
+def queue_refresh(session: Session, product_ids: list[int]) -> list[RefreshInfo]:
     """Queue a refresh of each product, all or none.
 
     A product whose refresh is pending, running or recent keeps it. "Recent"
     means requested within ``settings.refresh_cooldown_minutes``.
 
     Raises:
-        UnknownProduct: Some ASINs have no product; nothing is queued.
+        UnknownProduct: Some ids have no product; nothing is queued.
         NotTracked: Some products are not tracked; nothing is queued.
     """
-    rows = product_rows(session, asins)
-    if untracked := [row.asin for row in rows if not row.tracked]:
+    rows = product_rows(session, product_ids)
+    if untracked := [str(row.id) for row in rows if not row.tracked]:
         raise NotTracked(f"Not tracked: {', '.join(untracked)}")
-    unique = [row.asin for row in rows]
+    unique = [row.id for row in rows]
     now = datetime.datetime.now(datetime.UTC)
     cooldown = datetime.timedelta(minutes=settings.refresh_cooldown_minutes)
     refreshes = _refreshes(session, unique)
-    for asin in unique:
-        refresh = refreshes.get(asin)
+    for product_id in unique:
+        refresh = refreshes.get(product_id)
         if refresh is None:
-            refresh = RefreshRow(asin=asin)
+            refresh = RefreshRow(product_id=product_id)
             session.add(refresh)
         elif (
             refresh.status in ("pending", "running")

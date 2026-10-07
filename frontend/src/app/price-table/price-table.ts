@@ -1,6 +1,6 @@
 import { Component, computed, inject } from '@angular/core';
 import { DatePipe } from '@angular/common';
-import { eur, ProductStore } from '../products';
+import { label, money, ProductStore } from '../products';
 
 @Component({
   selector: 'app-price-table',
@@ -21,21 +21,31 @@ import { eur, ProductStore } from '../products';
           </tr>
         </thead>
         <tbody>
-          @for (row of rows(); track row.asin) {
+          @for (row of rows(); track row.id) {
             <tr>
               <th scope="row">
                 <span class="product">
-                  <span class="key" [style.background]="store.color(row.asin) ?? null" aria-hidden="true"></span>
-                  <a [href]="row.url" target="_blank" rel="noopener noreferrer" [title]="row.name">{{ row.name }}</a>
+                  <span
+                    class="key"
+                    [style.background]="store.color(row.id) ?? null"
+                    aria-hidden="true"
+                  ></span>
+                  <a
+                    [href]="row.url"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    [title]="row.name"
+                    >{{ row.name }}</a
+                  >
                 </span>
               </th>
               @if (row.stats; as s) {
-                <td class="num">{{ eur(s.now) }}</td>
+                <td class="num">{{ money(s.now, row.currency) }}</td>
                 <td class="num">
-                  {{ eur(s.low) }}
+                  {{ money(s.low, row.currency) }}
                   <span class="sub">{{ s.lowDate | date: 'd MMM' }}</span>
                 </td>
-                <td class="num">{{ eur(s.high) }}</td>
+                <td class="num">{{ money(s.high, row.currency) }}</td>
                 <td class="num">
                   @if (s.now <= s.low) {
                     <span class="badge"><span aria-hidden="true">✓</span> At lowest</span>
@@ -128,16 +138,17 @@ import { eur, ProductStore } from '../products';
 })
 export class PriceTable {
   protected readonly store = inject(ProductStore);
-  protected readonly eur = eur;
+  protected readonly money = money;
 
   protected readonly rows = computed(() =>
     this.store.scoped().map((p) => {
       const prices = p.history.map((h) => h.price);
       const low = Math.min(...prices);
       return {
-        asin: p.asin,
+        id: p.id,
         url: p.url,
-        name: p.name ?? p.asin,
+        name: label(p),
+        currency: p.currency,
         stats: prices.length
           ? {
               now: prices[prices.length - 1],

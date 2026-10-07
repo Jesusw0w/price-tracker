@@ -1,12 +1,14 @@
 """Development automation sessions."""
 
+from typing import Final
+
 import nox
 
 nox.options.sessions = ["lint", "typecheck", "tests"]
 nox.options.default_venv_backend = "uv"
 
-PYTHON_VERSION = "3.14"
-SOURCES = ("app", "migrations", "tests", "noxfile.py")
+PYTHON_VERSION: Final[str] = "3.14"
+SOURCES: Final[tuple[str, ...]] = ("app", "migrations", "tests", "noxfile.py")
 
 
 @nox.session(python=PYTHON_VERSION)

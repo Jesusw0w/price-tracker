@@ -3,11 +3,12 @@ from pydantic import BaseModel
 
 from app.db.database import SessionDep
 from app.db.models import ProductRow
+from app.links import InvalidLink
 from app.products import (
     AlreadyTracked,
-    Asin,
-    InvalidLink,
     Product,
+    ProductId,
+    TooManyTrackers,
     track,
     tracked_products,
 )
@@ -16,7 +17,7 @@ router = APIRouter(prefix="/api/products", tags=["products"])
 
 
 class NewProduct(BaseModel):
-    link: str  # Amazon product URL or bare ASIN
+    link: str  # https product URL, or a bare ASIN for Amazon.es
 
 
 @router.get("")
@@ -31,25 +32,26 @@ def track_product(body: NewProduct, session: SessionDep) -> Product:
 
     \f
     Raises:
-        HTTPException: 422 if the link has no ASIN, 409 if already tracked.
+        HTTPException: 422 if the link is refused, 409 if already tracked or
+            at the tracker cap.
     """
     try:
         return track(session, body.link)
     except InvalidLink as e:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(e)) from e
-    except AlreadyTracked as e:
+    except (AlreadyTracked, TooManyTrackers) as e:
         raise HTTPException(status.HTTP_409_CONFLICT, str(e)) from e
 
 
-@router.delete("/{asin}", status_code=status.HTTP_204_NO_CONTENT)
-def untrack_product(asin: Asin, session: SessionDep) -> Response:
+@router.delete("/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
+def untrack_product(product_id: ProductId, session: SessionDep) -> Response:
     """Stop tracking a product. Its price history is kept.
 
     \f
     Raises:
         HTTPException: 404 if not tracked.
     """
-    row = session.get(ProductRow, asin)
+    row = session.get(ProductRow, product_id)
     if row is None or not row.tracked:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Product not tracked")
     row.tracked = False

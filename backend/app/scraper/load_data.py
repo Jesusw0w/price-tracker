@@ -1,56 +1,47 @@
-import logging
-from typing import TypedDict
+from typing import Final
+from urllib.parse import urljoin
 
 import requests
-from bs4 import BeautifulSoup
 
-TIMEOUT_S = 30
+from app.links import ensure_public
 
-log = logging.getLogger(__name__)
+TIMEOUT_S: Final[int] = 30
+MAX_REDIRECTS: Final[int] = 3
+MAX_PAGE_BYTES: Final[int] = 5_000_000
+HEADERS: Final[dict[str, str]] = {
+    "User-Agent": (
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/141.0.0.0 Safari/537.36"
+    ),
+    "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
+}
 
 
-class RawData(TypedDict):
-    """``url_list[i]`` is the URL of ``gpu_raw_data[i]``."""
-
-    url_list: list[str]
-    gpu_raw_data: list[BeautifulSoup]
+class FetchError(Exception):
+    pass
 
 
-class ExtractData:
-    def __init__(self, gpu_list: list[str]) -> None:
-        self.gpu_url_list = gpu_list
-        self.header = {
-            "User-Agent": (
-                "Mozilla/5.0 (X11; Linux x86_64)"
-                "AppleWebKit/537.36 (KHTML, like Gecko)"
-                "Chrome/44.0.2403.157 Safari/537.36"
-            ),
-            "Accept-Language": "en-US, en;q=0.5",
-        }
+def fetch(url: str) -> bytes:
+    """Download one page; bytes, so the parser can honour the page's own charset.
 
-    def bs_extraction(self) -> RawData:
-        """Fetch and parse every page that answers HTTP 200."""
-        log.info("Fetching %d product pages", len(self.gpu_url_list))
-
-        gpu_list = self.valid_urls(urls=self.gpu_url_list, header=self.header)
-
-        request_res = [
-            requests.get(url, headers=self.header, timeout=TIMEOUT_S).text
-            for url in gpu_list
-        ]
-
-        amz_raw_data = [BeautifulSoup(req, "html.parser") for req in request_res]
-
-        # Must be the filtered list, or URLs and pages misalign when one is invalid
-        return {"url_list": gpu_list, "gpu_raw_data": amz_raw_data}
-
-    @staticmethod
-    def valid_urls(urls: list[str], header: dict[str, str]) -> list[str]:
-        valid = []
-        for url in urls:
-            status = requests.get(url, headers=header, timeout=TIMEOUT_S).status_code
-            if status == 200:
-                valid.append(url)
-            else:
-                log.warning("Skipping %s: HTTP %d", url, status)
-        return valid
+    Raises:
+        InvalidLink: The URL, or a redirect, points somewhere non-public.
+        FetchError: An HTTP error, too many redirects or an oversized page.
+        requests.RequestException: The connection failed or timed out.
+    """
+    for _ in range(MAX_REDIRECTS + 1):
+        # Redirects are followed by hand so every hop is checked, not just the first
+        ensure_public(url)
+        with requests.get(
+            url, headers=HEADERS, timeout=TIMEOUT_S, allow_redirects=False, stream=True
+        ) as response:
+            if response.is_redirect:
+                url = urljoin(url, response.headers["location"])
+                continue
+            if response.status_code != 200:
+                raise FetchError(f"HTTP {response.status_code}")
+            body: bytes = response.raw.read(MAX_PAGE_BYTES + 1, decode_content=True)
+            if len(body) > MAX_PAGE_BYTES:
+                raise FetchError("Page is too large")
+            return body
+    raise FetchError(f"More than {MAX_REDIRECTS} redirects")
