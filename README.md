@@ -9,7 +9,8 @@ docs/       architecture diagrams and ideas
 
 ## Backend
 
-See [backend/README.md](backend/README.md).
+See [backend/README.md](backend/README.md) for local setup and an optional AWS Lambda
+deploy of the API and MCP server. The scraper always runs locally.
 
 ## Frontend (Angular)
 

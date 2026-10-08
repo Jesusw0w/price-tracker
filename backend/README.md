@@ -56,7 +56,7 @@ uv run nox                         # lint, types, tests
 uv run alembic upgrade head        # if a migration was added; the Lambda never migrates
 rm -rf build
 uv export --frozen --no-dev --no-hashes --no-editable -o requirements.txt
-uv pip install -r requirements.txt --target build --python-platform aarch64-manylinux_2_34 --python-version 3.14
+uv pip install -r requirements.txt --target build --python-platform aarch64-manylinux_2_34 --python-version 3.14 --refresh-package gpu-price-tracker
 cp run.sh build/
 sam deploy
 ```
@@ -65,6 +65,8 @@ sam deploy
   `--no-editable` installs `app` as a package, so `build/` holds only code and dependencies.
 - `manylinux_2_34` matches the python3.14 runtime (Amazon Linux 2023); psycopg has no arm64
   wheels for the default `manylinux2014` tag.
+- `--refresh-package` makes uv rebuild this project. Without it, uv reuses its cached wheel
+  until `pyproject.toml` changes, and code changes never reach the Lambda.
 - `run.sh` must keep LF line endings: check with `git ls-files --eol run.sh`.
 - In Git Bash on Windows, prefix the `aws ssm` commands with `MSYS_NO_PATHCONV=1`, or the
   parameter name is rewritten as a Windows path.

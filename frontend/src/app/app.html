@@ -14,7 +14,13 @@
     </div>
   </header>
 
-  @if (store.loadError()) {
+  @if (store.needsToken()) {
+    <form class="banner unlock" (submit)="unlock($event, key)">
+      <label for="api-token">API token</label>
+      <input id="api-token" #key type="password" required autocomplete="off" />
+      <button type="submit">Unlock</button>
+    </form>
+  } @else if (store.loadError()) {
     <p class="banner" role="alert">Can't reach the API. Is <code>uv run fastapi dev</code> running?</p>
   }
 

@@ -68,6 +68,10 @@ export class ProductStore {
 
   readonly products = computed(() => (this.list.hasValue() ? this.list.value() : []));
   readonly loadError = computed(() => this.list.error());
+  readonly needsToken = computed(() => {
+    const error = this.list.error();
+    return error instanceof HttpErrorResponse && error.status === 401;
+  });
   readonly range = signal<Range>(RANGES[RANGES.length - 1]);
 
   // product id -> colour slot; a slot sticks to its product so toggling one never repaints the rest
@@ -107,6 +111,10 @@ export class ProductStore {
       if (free !== -1) next.set(id, free);
       return next;
     });
+  }
+
+  reload(): void {
+    this.list.reload();
   }
 
   /** Resolves to a message for the user, or undefined on success. */

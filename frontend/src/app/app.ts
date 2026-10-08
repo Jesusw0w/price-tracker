@@ -1,4 +1,5 @@
 import { Component, computed, inject } from '@angular/core';
+import { ApiToken } from './api-token';
 import { PriceChart, Series } from './price-chart/price-chart';
 import { PriceTable } from './price-table/price-table';
 import { label, ProductStore, RANGES } from './products';
@@ -12,7 +13,15 @@ import { Sidebar } from './sidebar/sidebar';
 })
 export class App {
   protected readonly store = inject(ProductStore);
+  private readonly token = inject(ApiToken);
   protected readonly ranges = RANGES;
+
+  protected unlock(event: SubmitEvent, input: HTMLInputElement): void {
+    event.preventDefault();
+    this.token.set(input.value.trim());
+    input.value = '';
+    this.store.reload();
+  }
 
   protected readonly series = computed<Series[]>(() =>
     this.store.scoped().flatMap((p) => {

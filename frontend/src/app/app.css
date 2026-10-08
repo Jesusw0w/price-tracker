@@ -90,6 +90,34 @@ h1 {
   color: var(--danger);
 }
 
+.unlock {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.unlock input {
+  flex: 1;
+  min-width: 12rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgb(13 18 21 / 0.55);
+  color: var(--ink);
+  font: inherit;
+}
+
+.unlock button {
+  padding: 0.55rem 1rem;
+  border: 0;
+  border-radius: 8px;
+  background: var(--steel);
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+
 @media (max-width: 56rem) {
   :host {
     grid-template-columns: minmax(0, 1fr);
