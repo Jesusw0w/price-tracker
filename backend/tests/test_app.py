@@ -8,12 +8,22 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app import products
+from app.config import settings
 from app.db.database import get_session
 from app.db.models import PriceRow, ProductRow
 from app.main import create_app
 
 TRACKED: Final[int] = 1
 DAY: Final[datetime.date] = datetime.date(2023, 2, 11)
+OWNER: Final[dict[str, str]] = {
+    "Authorization": f"Bearer {settings.api_token.get_secret_value()}"
+}
+MCP_ACCEPT: Final[dict[str, str]] = {"Accept": "application/json, text/event-stream"}
+TOOLS_LIST: Final[dict[str, object]] = {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/list",
+}
 
 
 @pytest.fixture
@@ -41,7 +51,7 @@ def client(session: Session) -> TestClient:
     session.commit()
     app = create_app()
     app.dependency_overrides[get_session] = lambda: session
-    return TestClient(app)
+    return TestClient(app, headers=OWNER)
 
 
 def test_products_carry_history_oldest_first(client: TestClient) -> None:
@@ -87,15 +97,25 @@ def test_retracking_keeps_history(client: TestClient) -> None:
 def test_mcp_answers_stateless_json_at_mcp() -> None:
     # The with-block runs the lifespan; without it the MCP session manager never starts
     with TestClient(create_app()) as client:
-        response = client.post(
-            "/mcp",
-            json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
-            headers={"Accept": "application/json, text/event-stream"},
-        )
+        response = client.post("/mcp", json=TOOLS_LIST, headers={**MCP_ACCEPT, **OWNER})
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/json"
     tools = response.json()["result"]["tools"]
     assert "list_trackers" in {t["name"] for t in tools}
+
+
+@pytest.mark.parametrize(
+    "auth", [{}, {"Authorization": "Bearer wrong"}, {"Authorization": "Basic x"}]
+)
+def test_api_and_mcp_refuse_calls_without_the_owner_token(
+    auth: dict[str, str],
+) -> None:
+    with TestClient(create_app()) as client:
+        api = client.get("/api/products", headers=auth)
+        mcp = client.post("/mcp", json=TOOLS_LIST, headers={**MCP_ACCEPT, **auth})
+    assert api.status_code == 401
+    assert api.headers["WWW-Authenticate"] == "Bearer"
+    assert mcp.status_code == 401
 
 
 def test_liveness_needs_no_database() -> None:

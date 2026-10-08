@@ -1,28 +1,41 @@
 import os
 from pathlib import Path
 
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _root = Path(__file__).parent.parent
+
+
+_SSM_FIELDS = ("database_url", "api_token")
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=_root / ".env", env_prefix="PT_")
 
     database_url: str
+    api_token: SecretStr = Field(min_length=32)  # single owner, so one bearer token
     refresh_cooldown_minutes: int = 30
     max_trackers: int = 100
 
 
 def _load_settings() -> Settings:
-    # Fetch credentials from ssm
-    if name := os.environ.get("PT_DATABASE_URL_PARAM"):
-        import boto3  # type: ignore[import-not-found]
 
-        ssm = boto3.client("ssm")
-        url = ssm.get_parameter(Name=name, WithDecryption=True)["Parameter"]["Value"]
-        return Settings(database_url=url)
-    return Settings()  # type: ignore[call-arg]
+    params = {
+        field: name
+        for field in _SSM_FIELDS
+        if (name := os.environ.get(f"PT_{field.upper()}_PARAM"))
+    }
+    if not params:
+        return Settings()  # type: ignore[call-arg]
+
+    import boto3  # type: ignore[import-not-found]
+
+    ssm = boto3.client("ssm")
+    found = ssm.get_parameters(Names=list(params.values()), WithDecryption=True)
+    values = {p["Name"]: p["Value"] for p in found["Parameters"]}
+
+    return Settings(**{field: values[name] for field, name in params.items()})
 
 
 settings = _load_settings()

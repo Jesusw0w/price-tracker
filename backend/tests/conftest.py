@@ -8,6 +8,7 @@ from sqlalchemy.pool import StaticPool
 
 # Settings require a URL at import; tests never connect, so any parseable one works
 os.environ.setdefault("PT_DATABASE_URL", "sqlite://")
+os.environ.setdefault("PT_API_TOKEN", "test-token-" + "x" * 32)
 
 from app.db.database import Base
 

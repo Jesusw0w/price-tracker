@@ -26,9 +26,12 @@ Resources:
                     PORT: "8000"
                     AWS_LWA_READINESS_CHECK_PATH: /health
                     PT_DATABASE_URL_PARAM: /price-tracker/database-url
+                    PT_API_TOKEN_PARAM: /price-tracker/api-token
             Policies:
                 - SSMParameterReadPolicy:
                     ParameterName: price-tracker/database-url
+                - SSMParameterReadPolicy:
+                    ParameterName: price-tracker/api-token
             Events:
                 All:
                     Type: HttpApi

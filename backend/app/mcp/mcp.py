@@ -13,6 +13,7 @@ from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from pydantic import Field
 
+from app.auth import OwnerTokenVerifier
 from app.db.database import SessionLocal
 from app.links import InvalidLink
 from app.products import (
@@ -37,7 +38,7 @@ from app.products import (
 Days = Annotated[int, Field(ge=1)]
 ProductIds = Annotated[list[ProductId], Field(min_length=1, max_length=50)]
 
-mcp = FastMCP(name="Price Tracker", mask_error_details=True)
+mcp = FastMCP(name="Price Tracker", mask_error_details=True, auth=OwnerTokenVerifier())
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": False})

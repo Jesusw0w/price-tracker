@@ -4,7 +4,7 @@ Run everything from this directory.
 
 ```bash
 uv sync --extra dev
-cp .env.example .env                  # set PT_DATABASE_URL, or export it instead
+cp .env.example .env                  # set PT_DATABASE_URL and PT_API_TOKEN, or export them
 uv run alembic upgrade head           # create or update the schema
 uv run fastapi dev                    # API on http://localhost:8000, docs at /docs
 uv run python -m app.scraper.run      # scrape tracked products, save today's prices
@@ -14,6 +14,20 @@ uv run nox -s format                  # apply ruff fixes and formatting
 
 After changing `app/db/models.py`: `uv run alembic revision --autogenerate -m "..."`,
 review the generated file in `migrations/versions/`, then `alembic upgrade head`.
+
+## Authentication
+
+The app has one owner and one token. Every call to `/api` and `/mcp` must send
+`Authorization: Bearer <PT_API_TOKEN>`; `/health` stays open for probes. The UI asks for the
+token on its first 401 and keeps it in the browser's localStorage. MCP clients send it as a
+header, for example in Claude Code:
+
+```bash
+claude mcp add --transport http price-tracker <url>/mcp --header "Authorization: Bearer <token>"
+```
+
+To rotate the token, change it (in `.env`, or in SSM when deployed) and enter the new one
+in the UI.
 
 ## Deploy to AWS Lambda (optional)
 
@@ -25,11 +39,13 @@ reach works as the database.
 ### One-time setup
 
 - Install the AWS CLI and the SAM CLI, and sign in with a deploy user (not root).
-- Store the database URL as an SSM SecureString. The function reads it at cold start
-  through `PT_DATABASE_URL_PARAM`, so it never appears in the Lambda configuration. With a
+- Store the database URL and the API token as SSM SecureStrings. The function reads them
+  at cold start through `PT_DATABASE_URL_PARAM` and `PT_API_TOKEN_PARAM`, so neither
+  appears in the Lambda configuration, and it fails to start if one is missing. With a
   connection pooler, use its transaction mode.
   ```bash
   aws ssm put-parameter --name /price-tracker/database-url --type SecureString --value '<url>'
+  aws ssm put-parameter --name /price-tracker/api-token --type SecureString --value '<token>'
   ```
 - Build (below), then `sam deploy --guided`. It saves your answers to `samconfig.toml`.
 

@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel
 
+from app.auth import require_owner
 from app.db.database import SessionDep
 from app.db.models import ProductRow
 from app.links import InvalidLink
@@ -13,7 +14,9 @@ from app.products import (
     tracked_products,
 )
 
-router = APIRouter(prefix="/api/products", tags=["products"])
+router = APIRouter(
+    prefix="/api/products", tags=["products"], dependencies=[Depends(require_owner)]
+)
 
 
 class NewProduct(BaseModel):
