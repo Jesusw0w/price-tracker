@@ -10,6 +10,9 @@ from app.products import (
     Product,
     ProductId,
     TooManyTrackers,
+    UnknownProduct,
+    archived_products,
+    delete_product,
     track,
     tracked_products,
 )
@@ -27,6 +30,12 @@ class NewProduct(BaseModel):
 def list_products(session: SessionDep) -> list[Product]:
     """List tracked products with their price history."""
     return tracked_products(session)
+
+
+@router.get("/archived")
+def list_archived_products(session: SessionDep) -> list[Product]:
+    """List untracked products with their price history. POST the URL to restore one."""
+    return archived_products(session)
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -47,13 +56,24 @@ def track_product(body: NewProduct, session: SessionDep) -> Product:
 
 
 @router.delete("/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
-def untrack_product(product_id: ProductId, session: SessionDep) -> Response:
-    """Stop tracking a product. Its price history is kept.
+def untrack_product(
+    product_id: ProductId, session: SessionDep, permanent: bool = False
+) -> Response:
+    """Archive a product: stop tracking it and keep its price history.
 
-    \f
+    With ``permanent``, delete the product and its history instead, tracked or not.
+
+
     Raises:
-        HTTPException: 404 if not tracked.
+        HTTPException: 404 if not tracked, or with ``permanent``, if unknown.
     """
+    if permanent:
+        try:
+            delete_product(session, product_id)
+        except UnknownProduct as e:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, str(e)) from e
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
     row = session.get(ProductRow, product_id)
     if row is None or not row.tracked:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Product not tracked")

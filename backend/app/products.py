@@ -3,7 +3,7 @@ import statistics
 from typing import Annotated
 
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.config import settings
@@ -90,9 +90,18 @@ def to_product(row: ProductRow) -> Product:
 
 
 def tracked_products(session: Session) -> list[Product]:
+    return _products(session, tracked=True)
+
+
+def archived_products(session: Session) -> list[Product]:
+    """Untracked products, with their history. Tracking the URL again restores one."""
+    return _products(session, tracked=False)
+
+
+def _products(session: Session, *, tracked: bool) -> list[Product]:
     rows = session.scalars(
         select(ProductRow)
-        .where(ProductRow.tracked)
+        .where(ProductRow.tracked == tracked)
         .order_by(ProductRow.added_at, ProductRow.id)
         .options(selectinload(ProductRow.prices))  # one query for all histories
     )
@@ -149,6 +158,20 @@ def product_row(session: Session, product_id: int) -> ProductRow:
     if row is None:
         raise UnknownProduct(f"No product with id {product_id}")
     return row
+
+
+def delete_product(session: Session, product_id: int) -> None:
+    """Delete the product, tracked or not, with its price history. Cannot be undone.
+
+    Raises:
+        UnknownProduct: No product has this id.
+    """
+    row = product_row(session, product_id)
+    # The foreign keys have no ON DELETE CASCADE, so the child rows go first
+    session.execute(delete(PriceRow).where(PriceRow.product_id == product_id))
+    session.execute(delete(RefreshRow).where(RefreshRow.product_id == product_id))
+    session.delete(row)
+    session.commit()
 
 
 def price_history(session: Session, product_id: int, days: int) -> list[PricePoint]:

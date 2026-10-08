@@ -21,7 +21,7 @@ def row(product_id: int, **fields: object) -> ProductRow:
     return ProductRow(id=product_id, url=url, domain="shop.example", **fields)
 
 
-def test_tracked_products_skip_untracked_and_list_oldest_added_first(
+def test_tracked_and_archived_products_split_on_tracked_oldest_added_first(
     session: Session,
 ) -> None:
     session.add_all(
@@ -34,6 +34,7 @@ def test_tracked_products_skip_untracked_and_list_oldest_added_first(
     )
     session.commit()
     assert [p.id for p in products.tracked_products(session)] == [2, 3, 1]
+    assert [p.id for p in products.archived_products(session)] == [4]
 
 
 def test_history_is_oldest_first(session: Session) -> None:

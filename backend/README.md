@@ -10,7 +10,11 @@ uv run fastapi dev                    # API on http://localhost:8000, docs at /d
 uv run python -m app.scraper.run      # scrape tracked products, save today's prices
 uv run nox                            # ruff check + format --check, mypy --strict, pytest
 uv run nox -s format                  # apply ruff fixes and formatting
+uv run nox -s deploy                  # checks, then build and deploy the Lambda (AWS)
+uv run nox -s deploy_ui               # build the UI, upload it, invalidate CloudFront (AWS)
 ```
+
+Plain `uv run nox` only checks; the deploy sessions run only when named.
 
 After changing `app/db/models.py`: `uv run alembic revision --autogenerate -m "..."`,
 review the generated file in `migrations/versions/`, then `alembic upgrade head`.
@@ -49,19 +53,22 @@ reach works as the database.
   aws ssm put-parameter --name /price-tracker/database-url --type SecureString --value '<url>'
   aws ssm put-parameter --name /price-tracker/api-token --type SecureString --value '<token>'
   ```
-- Build (below), then `sam deploy --guided`. It saves your answers to `samconfig.toml`.
+- First deploy: `uv run nox -s deploy -- --guided`. It saves your answers to
+  `samconfig.toml`. After that, `uv run nox -s deploy_ui` uploads the UI.
 
 ### Build and redeploy
 
 ```bash
-uv run nox                         # lint, types, tests
-uv run alembic upgrade head        # if a migration was added; the Lambda never migrates
-rm -rf build
-uv export --frozen --no-dev --no-hashes --no-editable -o requirements.txt
-uv pip install -r requirements.txt --target build --python-platform aarch64-manylinux_2_34 --python-version 3.14 --refresh-package gpu-price-tracker
-cp run.sh build/
-sam deploy
+uv run alembic upgrade head    # only if a migration was added; the Lambda never migrates
+uv run nox -s deploy           # lint, types, tests, then build and sam deploy
+uv run nox -s deploy_ui        # npm build, sync to the bucket, invalidate CloudFront
 ```
+
+`deploy` passes extra arguments to `sam deploy`, for example
+`uv run nox -s deploy -- --no-confirm-changeset`. `deploy_ui` reads the stack name and
+region from `samconfig.toml`, which the first guided deploy writes.
+
+Notes on the build in `noxfile.py`:
 
 - The build skips `sam build`, which would zip the whole directory, `.env` included.
   `--no-editable` installs `app` as a package, so `build/` holds only code and dependencies.
@@ -70,22 +77,10 @@ sam deploy
 - `--refresh-package` makes uv rebuild this project. Without it, uv reuses its cached wheel
   until `pyproject.toml` changes, and code changes never reach the Lambda.
 - `run.sh` must keep LF line endings: check with `git ls-files --eol run.sh`.
+- The invalidation in `deploy_ui` matters: without it CloudFront keeps serving its cached
+  `index.html`, which points at bundles the sync just deleted.
 - In Git Bash on Windows, prefix the `aws ssm` commands with `MSYS_NO_PATHCONV=1`, or the
   parameter name is rewritten as a Windows path.
-
-### Upload the UI
-
-After the first deploy, and whenever the frontend changes (from `frontend/`):
-
-```bash
-npm run build
-aws s3 sync dist/frontend/browser s3://<UiBucketName> --delete
-aws cloudfront create-invalidation --distribution-id <CdnId> --paths "/*"
-```
-
-`UiBucketName` and `CdnId` are stack outputs. The invalidation makes CloudFront fetch the new
-`index.html` instead of serving its cached copy for up to a day. The `/api/*` behavior
-forwards `Authorization` and never caches, since responses depend on the token.
 
 ### Check and logs
 

@@ -86,12 +86,29 @@ def test_track_and_untrack(client: TestClient) -> None:
     assert [p["id"] for p in client.get("/api/products").json()] == [TRACKED]
 
 
-def test_retracking_keeps_history(client: TestClient) -> None:
+def test_archived_products_keep_history_and_restore_by_url(client: TestClient) -> None:
+    assert client.get("/api/products/archived").json() == []
     assert client.delete(f"/api/products/{TRACKED}").status_code == 204
     assert client.get("/api/products").json() == []
-    retracked = client.post("/api/products", json={"link": "B0BMG3FBND"})
-    assert retracked.status_code == 201
-    assert len(retracked.json()["history"]) == 2
+    [archived] = client.get("/api/products/archived").json()
+    assert (archived["id"], len(archived["history"])) == (TRACKED, 2)
+
+    restored = client.post("/api/products", json={"link": archived["url"]})
+    assert restored.status_code == 201
+    assert len(restored.json()["history"]) == 2
+    assert client.get("/api/products/archived").json() == []
+
+
+def test_permanent_delete_removes_product_and_history(client: TestClient) -> None:
+    product = client.get("/api/products").json()[0]
+    assert client.delete(f"/api/products/{TRACKED}").status_code == 204
+    assert client.delete(f"/api/products/{TRACKED}?permanent=true").status_code == 204
+    assert client.get("/api/products/archived").json() == []
+    assert client.delete(f"/api/products/{TRACKED}?permanent=true").status_code == 404
+
+    readded = client.post("/api/products", json={"link": product["url"]})
+    assert readded.status_code == 201
+    assert readded.json()["history"] == []
 
 
 def test_mcp_answers_stateless_json_at_mcp() -> None:
