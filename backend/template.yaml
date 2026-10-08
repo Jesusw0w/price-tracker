@@ -1,0 +1,44 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Price tracker API and MCP server on one Lambda
+
+Resources:
+    Api:
+        Type: AWS::Serverless::HttpApi
+        Properties:
+            DefaultRouteSettings:
+                ThrottlingBurstLimit: 10
+                ThrottlingRateLimit: 5
+    ApiFunction:
+        Type: AWS::Serverless::Function
+        Properties:
+            CodeUri: build/
+            Handler: run.sh
+            Runtime: python3.14
+            Architectures: [arm64]
+            MemorySize: 1024
+            Timeout: 29
+            Layers:
+                - !Sub arn:aws:lambda:${AWS::Region}:753240598075:layer:LambdaAdapterLayerArm64:30
+            Environment:
+                Variables:
+                    AWS_LAMBDA_EXEC_WRAPPER: /opt/bootstrap
+                    PORT: "8000"
+                    AWS_LWA_READINESS_CHECK_PATH: /health
+                    PT_DATABASE_URL_PARAM: /price-tracker/database-url
+            Policies:
+                - SSMParameterReadPolicy:
+                    ParameterName: price-tracker/database-url
+            Events:
+                All:
+                    Type: HttpApi
+                    Properties:
+                        ApiId: !Ref Api
+    ApiLogs:
+        Type: AWS::Logs::LogGroup
+        Properties:
+            LogGroupName: !Sub /aws/lambda/${ApiFunction}
+            RetentionInDays: 7
+Outputs:
+    Url:
+        Value: !Sub https://${Api}.execute-api.${AWS::Region}.${AWS::URLSuffix}/

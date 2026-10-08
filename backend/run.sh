@@ -1,2 +1,3 @@
-#LAMBDA RUNTIME DIR
-PYTHONPATH=$PYTHONPATH:$LAMBDA_RUNTIME_DIR exec python -m uvicorn --port="$PORT" app:main:app
+#!/bin/bash
+#LAMBDA_RUNTIME_DIR
+PYTHONPATH=$PYTHONPATH:$LAMBDA_RUNTIME_DIR exec python -m uvicorn --port="$PORT" app.main:app
