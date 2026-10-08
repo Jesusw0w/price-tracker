@@ -29,10 +29,12 @@ claude mcp add --transport http price-tracker <url>/mcp --header "Authorization:
 To rotate the token, change it (in `.env`, or in SSM when deployed) and enter the new one
 in the UI.
 
-## Deploy to AWS Lambda (optional)
+## Deploy to AWS (optional)
 
 `template.yaml` deploys the API and MCP server as one Lambda behind an HTTP API with SAM.
-The Lambda Web Adapter layer starts uvicorn through `run.sh`. The scraper stays on your own
+The Lambda Web Adapter layer starts uvicorn through `run.sh`. The same stack serves the UI
+from a private S3 bucket through CloudFront, which also routes `/api/*` to the HTTP API, so
+the UI and the API share one origin and need no CORS. The scraper stays on your own
 machine because Amazon blocks requests from AWS IP ranges. Any Postgres the Lambda can
 reach works as the database.
 
@@ -41,8 +43,8 @@ reach works as the database.
 - Install the AWS CLI and the SAM CLI, and sign in with a deploy user (not root).
 - Store the database URL and the API token as SSM SecureStrings. The function reads them
   at cold start through `PT_DATABASE_URL_PARAM` and `PT_API_TOKEN_PARAM`, so neither
-  appears in the Lambda configuration, and it fails to start if one is missing. With a
-  connection pooler, use its transaction mode.
+  appears in the Lambda configuration. If one is missing, the function fails to start.
+  With a connection pooler, use its transaction mode.
   ```bash
   aws ssm put-parameter --name /price-tracker/database-url --type SecureString --value '<url>'
   aws ssm put-parameter --name /price-tracker/api-token --type SecureString --value '<token>'
@@ -71,12 +73,33 @@ sam deploy
 - In Git Bash on Windows, prefix the `aws ssm` commands with `MSYS_NO_PATHCONV=1`, or the
   parameter name is rewritten as a Windows path.
 
+### Upload the UI
+
+After the first deploy, and whenever the frontend changes (from `frontend/`):
+
+```bash
+npm run build
+aws s3 sync dist/frontend/browser s3://<UiBucketName> --delete
+aws cloudfront create-invalidation --distribution-id <CdnId> --paths "/*"
+```
+
+`UiBucketName` and `CdnId` are stack outputs. The invalidation makes CloudFront fetch the new
+`index.html` instead of serving its cached copy for up to a day. The `/api/*` behavior
+forwards `Authorization` and never caches, since responses depend on the token.
+
 ### Check and logs
 
 ```bash
-sam list stack-outputs --stack-name <stack>          # API URL
+sam list stack-outputs --stack-name <stack>          # API and UI URLs
 curl <url>health/ready                                # 200 = parameter read and DB reachable
 sam logs -n ApiFunction --stack-name <stack> --tail
+```
+
+`events/` holds HTTP API events for invoking the function directly, bypassing API Gateway.
+The `*-no-token` events should still get a 401, because the app checks the token itself:
+
+```bash
+sam remote invoke ApiFunction --stack-name <stack> --event-file events/health.json
 ```
 
 After changing the parameter (`put-parameter ... --overwrite`), running instances keep the

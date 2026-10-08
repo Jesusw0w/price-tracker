@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
-Description: Price tracker API and MCP server on one Lambda
+Description: Price tracker API and MCP server on one Lambda, UI on S3 behind CloudFront
 
 Resources:
     Api:
@@ -42,6 +42,65 @@ Resources:
         Properties:
             LogGroupName: !Sub /aws/lambda/${ApiFunction}
             RetentionInDays: 7
+    UiBucket:
+        Type: AWS::S3::Bucket
+    UiOriginAccess:
+        Type: AWS::CloudFront::OriginAccessControl
+        Properties:
+            OriginAccessControlConfig:
+                Name: !Sub ${AWS::StackName}-ui
+                OriginAccessControlOriginType: s3
+                SigningBehavior: always
+                SigningProtocol: sigv4
+    UiBucketPolicy:
+        Type: AWS::S3::BucketPolicy
+        Properties:
+            Bucket: !Ref UiBucket
+            PolicyDocument:
+                Statement:
+                    - Effect: Allow
+                      Principal:
+                          Service: cloudfront.amazonaws.com
+                      Action: s3:GetObject
+                      Resource: !Sub ${UiBucket.Arn}/*
+                      Condition:  # only this distribution may read the bucket
+                          StringEquals:
+                              AWS:SourceArn: !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/${Cdn}
+    Cdn:
+        Type: AWS::CloudFront::Distribution
+        Properties:
+            DistributionConfig:
+                Enabled: true
+                DefaultRootObject: index.html
+                PriceClass: PriceClass_100
+                Origins:
+                    - Id: ui
+                      DomainName: !GetAtt UiBucket.RegionalDomainName
+                      OriginAccessControlId: !GetAtt UiOriginAccess.Id
+                      S3OriginConfig:
+                          OriginAccessIdentity: ""
+                    - Id: api
+                      DomainName: !Sub ${Api}.execute-api.${AWS::Region}.${AWS::URLSuffix}
+                      CustomOriginConfig:
+                          OriginProtocolPolicy: https-only
+                DefaultCacheBehavior:
+                    TargetOriginId: ui
+                    ViewerProtocolPolicy: redirect-to-https
+                    CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6  # CachingOptimized
+                    Compress: true
+                CacheBehaviors:
+                    - PathPattern: /api/*
+                      TargetOriginId: api
+                      ViewerProtocolPolicy: https-only
+                      AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
+                      CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad  # CachingDisabled: responses depend on the token
+                      OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac  # AllViewerExceptHostHeader: forwards Authorization, API Gateway needs its own Host
 Outputs:
     Url:
         Value: !Sub https://${Api}.execute-api.${AWS::Region}.${AWS::URLSuffix}/
+    UiUrl:
+        Value: !Sub https://${Cdn.DomainName}/
+    UiBucketName:
+        Value: !Ref UiBucket
+    CdnId:
+        Value: !Ref Cdn

@@ -1,0 +1,29 @@
+{
+  "version": "2.0",
+  "routeKey": "$default",
+  "rawPath": "/api/products",
+  "rawQueryString": "",
+  "headers": {
+    "host": "test-event",
+    "user-agent": "sam-remote-invoke"
+  },
+  "requestContext": {
+    "accountId": "123456789012",
+    "apiId": "test-event",
+    "domainName": "test-event",
+    "domainPrefix": "test-event",
+    "http": {
+      "method": "GET",
+      "path": "/api/products",
+      "protocol": "HTTP/1.1",
+      "sourceIp": "127.0.0.1",
+      "userAgent": "sam-remote-invoke"
+    },
+    "requestId": "test-event",
+    "routeKey": "$default",
+    "stage": "$default",
+    "time": "08/Oct/2026:12:00:00 +0000",
+    "timeEpoch": 1791460800000
+  },
+  "isBase64Encoded": false
+}
