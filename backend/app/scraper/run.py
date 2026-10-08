@@ -16,9 +16,8 @@ from app.scraper import save_data
 from app.scraper.load_data import FetchError, fetch
 from app.scraper.process_data import Scraped, is_blocked, parse_page
 
-REQUEST_GAP_S: Final[int] = (
-    2  # one page at a time, spaced out, to stay under bot detection
-)
+# One page at a time, spaced out, to stay under bot detection
+REQUEST_GAP_S: Final[int] = 2
 
 log = logging.getLogger(__name__)
 

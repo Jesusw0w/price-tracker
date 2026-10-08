@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -13,4 +14,15 @@ class Settings(BaseSettings):
     max_trackers: int = 100
 
 
-settings = Settings()  # type: ignore[call-arg]  # mypy cannot see fields filled from env
+def _load_settings() -> Settings:
+    # Fetch credentials from ssm
+    if name := os.environ.get("PT_DATABASE_URL_PARAM"):
+        import boto3  # type: ignore[import-not-found]
+
+        ssm = boto3.client("ssm")
+        url = ssm.get_parameter(Name=name, WithDecryption=True)["Parameter"]["Value"]
+        return Settings(database_url=url)
+    return Settings()  # type: ignore[call-arg]
+
+
+settings = _load_settings()
