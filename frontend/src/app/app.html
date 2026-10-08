@@ -1,3 +1,7 @@
+@if (background.image(); as image) {
+  <div class="backdrop" [style.background-image]="image" aria-hidden="true"></div>
+}
+
 <aside class="glass">
   <app-sidebar />
 </aside>
@@ -5,12 +9,42 @@
 <main>
   <header class="toolbar">
     <h1>Price history</h1>
-    <div class="ranges" role="group" aria-label="Date range">
-      @for (range of ranges; track range.label) {
-        <button type="button" [attr.aria-pressed]="store.range() === range" (click)="store.range.set(range)">
-          {{ range.label }}
+    <div class="controls">
+      @if (background.available()) {
+        <button
+          type="button"
+          class="icon-button"
+          (click)="background.shuffle()"
+          aria-label="Change background"
+          title="Change background"
+        >
+          <!-- Lucide wand-sparkles, ISC licence -->
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72"
+            />
+            <path d="m14 7 3 3" />
+            <path d="M5 6v4" />
+            <path d="M19 14v4" />
+            <path d="M10 2v2" />
+            <path d="M7 8H3" />
+            <path d="M21 16h-4" />
+            <path d="M11 3H9" />
+          </svg>
         </button>
       }
+      <app-dashboard-picker />
+      <div class="ranges" role="group" aria-label="Date range">
+        @for (range of ranges; track range.label) {
+          <button
+            type="button"
+            [attr.aria-pressed]="store.range() === range"
+            (click)="store.range.set(range)"
+          >
+            {{ range.label }}
+          </button>
+        }
+      </div>
     </div>
   </header>
 
@@ -21,7 +55,9 @@
       <button type="submit">Unlock</button>
     </form>
   } @else if (store.loadError()) {
-    <p class="banner" role="alert">Can't reach the API. Is <code>uv run fastapi dev</code> running?</p>
+    <p class="banner" role="alert">
+      Can't reach the API. Is <code>uv run fastapi dev</code> running?
+    </p>
   }
 
   <section class="card">

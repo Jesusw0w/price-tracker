@@ -1,6 +1,7 @@
 import {
   afterRenderEffect,
   Component,
+  computed,
   DestroyRef,
   ElementRef,
   inject,
@@ -109,7 +110,7 @@ const crosshair: Plugin<'line'> = {
     <div class="frame">
       <canvas #canvas role="img" [attr.aria-label]="'Price history for ' + labels()"></canvas>
       @if (!series().length) {
-        <p class="empty">Tick products in the sidebar to chart them.</p>
+        <p class="empty">Tick products in the sidebar or in Customize to chart them.</p>
       }
     </div>
     <ul class="legend" aria-label="Legend">
@@ -168,11 +169,11 @@ export class PriceChart {
   readonly series = input.required<Series[]>();
   private readonly canvas = viewChild.required<ElementRef<HTMLCanvasElement>>('canvas');
 
-  protected labels(): string {
-    return this.series()
+  protected readonly labels = computed(() =>
+    this.series()
       .map((s) => s.label)
-      .join(', ');
-  }
+      .join(', '),
+  );
 
   constructor() {
     let chart: Chart<'line', { x: number; y: number }[]> | undefined;

@@ -8,20 +8,20 @@ describe('App', () => {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
 
-    TestBed.inject(HttpTestingController)
-      .expectOne('/api/products')
-      .flush([
-        {
-          id: 1,
-          url: 'https://www.amazon.es/dp/B0BMG3FBND',
-          name: 'Sapphire RX 7900 XT',
-          currency: 'EUR',
-          history: [
-            { date: '2023-06-01', price: 1000 },
-            { date: '2023-06-02', price: 950 },
-          ],
-        },
-      ]);
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne('/backgrounds/index.json').flush([]);
+    http.expectOne('/api/products').flush([
+      {
+        id: 1,
+        url: 'https://www.amazon.es/dp/B0BMG3FBND',
+        name: 'Sapphire RX 7900 XT',
+        currency: 'EUR',
+        history: [
+          { date: '2023-06-01', price: 1000 },
+          { date: '2023-06-02', price: 950 },
+        ],
+      },
+    ]);
     await fixture.whenStable();
 
     const el = fixture.nativeElement as HTMLElement;

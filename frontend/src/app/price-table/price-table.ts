@@ -57,6 +57,12 @@ import { label, money, ProductStore } from '../products';
                 <td colspan="4" class="pending">No prices in this range yet</td>
               }
             </tr>
+          } @empty {
+            <tr>
+              <td colspan="5" class="pending">
+                No products shown. Tick some in the sidebar or in Customize.
+              </td>
+            </tr>
           }
         </tbody>
       </table>

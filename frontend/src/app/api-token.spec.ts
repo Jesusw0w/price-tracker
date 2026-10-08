@@ -18,6 +18,7 @@ describe('API token', () => {
     const fixture = TestBed.createComponent(App);
     const http = TestBed.inject(HttpTestingController);
     fixture.detectChanges();
+    http.expectOne('/backgrounds/index.json').flush([]);
 
     const first = http.expectOne('/api/products');
     expect(first.request.headers.has('Authorization')).toBe(false);

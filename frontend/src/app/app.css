@@ -7,6 +7,50 @@
   box-sizing: border-box;
 }
 
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-position: center;
+  background-size: cover;
+}
+
+/* Keeps text readable on any photo */
+.backdrop::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgb(13 18 21 / 0.55);
+}
+
+.icon-button {
+  display: grid;
+  place-items: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgb(21 27 32 / 0.7);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.icon-button:hover {
+  background: rgb(203 213 219 / 0.06);
+  color: var(--ink);
+}
+
+.icon-button svg {
+  width: 1.1rem;
+  height: 1.1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .glass {
   position: sticky;
   top: 1.5rem;
@@ -45,6 +89,13 @@ h1 {
   color: var(--ink);
 }
 
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
 .ranges {
   display: flex;
   padding: 3px;
@@ -78,7 +129,9 @@ h1 {
   padding: 1.25rem 1.5rem;
   border: 1px solid var(--border);
   border-radius: 14px;
-  background: var(--surface);
+  /* Mostly opaque, and blurred, so the background shows as colour without hurting text */
+  background: rgb(21 27 32 / 0.7);
+  backdrop-filter: blur(14px) saturate(130%);
 }
 
 .banner {

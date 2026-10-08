@@ -3,13 +3,25 @@ import { inject, Service, signal } from '@angular/core';
 
 const STORAGE_KEY = 'price-tracker.api-token';
 
+function read(): string {
+  try {
+    return localStorage.getItem(STORAGE_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
 /** The owner's bearer token, kept in localStorage so the UI stays unlocked across visits. */
 @Service()
 export class ApiToken {
-  readonly value = signal(localStorage.getItem(STORAGE_KEY) ?? '');
+  readonly value = signal(read());
 
   set(token: string): void {
-    localStorage.setItem(STORAGE_KEY, token);
+    try {
+      localStorage.setItem(STORAGE_KEY, token);
+    } catch {
+      // storage blocked: the token lasts until the tab closes
+    }
     this.value.set(token);
   }
 }
