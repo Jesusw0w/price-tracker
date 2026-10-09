@@ -7,6 +7,7 @@ from fastapi.responses import RedirectResponse
 from app.auth import (
     LOGIN_COOKIE,
     LoginFailed,
+    LoginPage,
     SessionCookie,
     end_session,
     finish_login,
@@ -21,9 +22,12 @@ log = logging.getLogger(__name__)
 
 
 @router.get("/login")
-def login() -> RedirectResponse:
-    """Redirect to Cognito's sign-in page; it comes back to /api/auth/callback."""
-    return login_redirect()
+def login(page: LoginPage = "login") -> RedirectResponse:
+    """Redirect to Cognito's sign-in page, or with ``page=reset`` its password reset.
+
+    Both end in a sign-in that comes back to /api/auth/callback.
+    """
+    return login_redirect(page)
 
 
 @router.get("/callback")

@@ -209,7 +209,7 @@ export class PriceChart {
           maintainAspectRatio: false,
           animation: reduceMotion ? false : { duration: 300 },
           interaction: { mode: 'nearest', axis: 'x', intersect: false },
-          font: { family: 'system-ui, -apple-system, "Segoe UI", sans-serif' },
+          font: { family: '"Geist Mono Variable", ui-monospace, Consolas, monospace' },
           scales: {
             x: {
               type: 'linear',

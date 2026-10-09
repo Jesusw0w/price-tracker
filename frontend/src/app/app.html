@@ -2,77 +2,130 @@
   <div class="backdrop" [style.background-image]="image" aria-hidden="true"></div>
 }
 
-<aside class="glass">
-  <app-sidebar />
-</aside>
+@if (signedOut()) {
+  <div class="gate">
+    <app-login />
+  </div>
+} @else if (account.ready()) {
+  <!-- On phones the sidebar is a panel that slides in over the dashboard -->
+  @if (panelOpen()) {
+    <div class="scrim" (click)="closePanel()" aria-hidden="true"></div>
+  }
+  <aside
+    id="products-panel"
+    class="ledger"
+    [class.open]="panelOpen()"
+    aria-label="Products and filters"
+  >
+    <div class="panel-bar">
+      <button #panelClose type="button" class="text-button" (click)="closePanel()">
+        Close <span aria-hidden="true">✕</span>
+      </button>
+    </div>
+    <app-sidebar />
+  </aside>
 
-<main>
-  <header class="toolbar">
-    <h1>Price history</h1>
-    <div class="controls">
-      @if (background.available()) {
+  <main [attr.inert]="panelOpen() ? '' : null">
+    <header class="toolbar">
+      <div class="heading">
         <button
+          #panelToggle
           type="button"
-          class="icon-button"
-          (click)="background.shuffle()"
-          aria-label="Change background"
-          title="Change background"
+          class="panel-toggle"
+          aria-controls="products-panel"
+          [attr.aria-expanded]="panelOpen()"
+          (click)="openPanel()"
         >
-          <!-- Lucide wand-sparkles, ISC licence -->
+          <!-- Lucide sliders-horizontal, ISC licence -->
           <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path
-              d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72"
-            />
-            <path d="m14 7 3 3" />
-            <path d="M5 6v4" />
-            <path d="M19 14v4" />
-            <path d="M10 2v2" />
-            <path d="M7 8H3" />
-            <path d="M21 16h-4" />
-            <path d="M11 3H9" />
+            <path d="M10 5H3" />
+            <path d="M12 19H3" />
+            <path d="M14 3v4" />
+            <path d="M16 17v4" />
+            <path d="M21 12h-9" />
+            <path d="M21 19h-5" />
+            <path d="M21 5h-7" />
+            <path d="M8 10v4" />
+            <path d="M8 12H3" />
           </svg>
+          Products
+          <span class="badge-count">{{ store.slots().size }}/{{ maxShown }}</span>
         </button>
-      }
-      <app-dashboard-picker />
-      @if (account.email(); as email) {
-        <span class="who" [title]="email">{{ email }}</span>
-        <button type="button" class="text-button" (click)="account.signOut()">Sign out</button>
-      }
-      <div class="ranges" role="group" aria-label="Date range">
-        @for (range of ranges; track range.label) {
+        <h1>Price history</h1>
+      </div>
+      <div class="controls">
+        @if (background.available()) {
           <button
             type="button"
-            [attr.aria-pressed]="store.range() === range"
-            (click)="store.range.set(range)"
+            class="icon-button"
+            (click)="background.shuffle()"
+            aria-label="Change background"
+            title="Change background"
           >
-            {{ range.label }}
+            <!-- Lucide wand-sparkles, ISC licence -->
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72"
+              />
+              <path d="m14 7 3 3" />
+              <path d="M5 6v4" />
+              <path d="M19 14v4" />
+              <path d="M10 2v2" />
+              <path d="M7 8H3" />
+              <path d="M21 16h-4" />
+              <path d="M11 3H9" />
+            </svg>
           </button>
         }
+        <app-dashboard-picker />
+        @if (account.email(); as email) {
+          <span class="who" [title]="email">{{ email }}</span>
+          <button type="button" class="text-button" (click)="account.signOut()">Sign out</button>
+        }
+        <div class="ranges" role="group" aria-label="Date range">
+          @for (range of ranges; track range.label) {
+            <button
+              type="button"
+              [attr.aria-pressed]="store.range() === range"
+              (click)="store.range.set(range)"
+            >
+              {{ range.label }}
+            </button>
+          }
+        </div>
       </div>
+    </header>
+
+    @if (loadError()) {
+      <p class="banner" role="alert">
+        Can't load your products right now. Reload the page in a minute.
+      </p>
+    }
+    @if (account.saveFailed()) {
+      <p class="banner" role="alert">
+        Couldn't save your dashboard settings. They last until you reload; try your change again.
+      </p>
+    }
+
+    <section class="card">
+      <app-price-chart [series]="series()" />
+    </section>
+
+    <section class="card">
+      <app-price-table />
+    </section>
+  </main>
+} @else if (loadError()) {
+  <div class="gate">
+    <div class="card status" role="alert">
+      <p>Can't reach the server right now.</p>
+      <button type="button" class="text-button" (click)="account.retry(); store.reload()">
+        Try again
+      </button>
     </div>
-  </header>
-
-  @if (signedOut()) {
-    <div class="banner signin">
-      <p>Sign in to see your dashboard.</p>
-      <button type="button" (click)="account.signIn()">Sign in</button>
-    </div>
-  } @else if (loadError()) {
-    <p class="banner" role="alert">
-      Can't reach the API. Is <code>uv run fastapi dev</code> running?
-    </p>
-  }
-  @if (account.saveFailed()) {
-    <p class="banner" role="alert">
-      Couldn't save your dashboard settings. They last until you reload; try your change again.
-    </p>
-  }
-
-  <section class="card">
-    <app-price-chart [series]="series()" />
-  </section>
-
-  <section class="card">
-    <app-price-table />
-  </section>
-</main>
+  </div>
+} @else {
+  <div class="gate">
+    <p class="status connecting" role="status">Connecting to the server…</p>
+  </div>
+}

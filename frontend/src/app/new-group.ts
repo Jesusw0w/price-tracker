@@ -5,10 +5,11 @@ import { GroupStore } from './groups';
   selector: 'app-new-group',
   template: `
     <form (submit)="add($event, name)">
+      <span aria-hidden="true">+</span>
       <input
         #name
         aria-label="New group name"
-        placeholder="New group"
+        placeholder="new group"
         maxlength="40"
         autocomplete="off"
       />
@@ -18,37 +19,43 @@ import { GroupStore } from './groups';
   styles: `
     form {
       display: flex;
+      align-items: center;
       gap: 0.5rem;
+      border-bottom: 1px dashed var(--rule);
+      font-family: var(--mono);
+      font-size: 0.8125rem;
+      color: var(--muted);
+    }
+    form:focus-within {
+      border-bottom-style: solid;
+      border-bottom-color: var(--link);
     }
     input {
       flex: 1;
       min-width: 0;
-      padding: 0.4rem 0.65rem;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      background: rgb(13 18 21 / 0.55);
+      min-height: 2.25rem;
+      padding: 0;
+      border: 0;
+      background: none;
       color: var(--ink);
       font: inherit;
-      font-size: 0.85rem;
+      outline: none;
     }
     input::placeholder {
       color: var(--muted);
     }
     button {
       flex: none;
-      padding: 0.4rem 0.75rem;
-      border: 1px solid var(--border);
-      border-radius: 8px;
+      min-height: 2.25rem;
+      padding: 0;
+      border: 0;
       background: none;
-      color: var(--ink-2);
+      color: var(--link);
       font: inherit;
-      font-size: 0.8rem;
       cursor: pointer;
     }
-    button:hover,
-    button:focus-visible {
-      border-color: var(--steel);
-      color: var(--ink);
+    button:hover {
+      text-decoration: underline;
     }
   `,
 })

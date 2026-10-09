@@ -46,8 +46,13 @@ export class Account {
     this.saveTimer = setTimeout(() => this.save(), SAVE_DELAY_MS);
   }
 
-  signIn(): void {
-    this.location.assign('/api/auth/login');
+  /** ``reset`` starts at Cognito's password reset, which ends in a sign-in too. */
+  signIn(page: 'login' | 'reset' = 'login'): void {
+    this.location.assign(page === 'reset' ? '/api/auth/login?page=reset' : '/api/auth/login');
+  }
+
+  retry(): void {
+    this.me.reload();
   }
 
   async signOut(): Promise<void> {

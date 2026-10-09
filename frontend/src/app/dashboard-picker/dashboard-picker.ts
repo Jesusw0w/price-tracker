@@ -38,6 +38,7 @@ type Action = 'archive' | 'delete';
               <div class="group-head">
                 <input
                   type="checkbox"
+                  class="tick"
                   [checked]="state === 'all'"
                   [indeterminate]="state === 'some'"
                   [disabled]="!section.products.length"
@@ -100,15 +101,12 @@ type Action = 'archive' | 'delete';
                       <label>
                         <input
                           type="checkbox"
+                          class="tick"
+                          [style.--key]="color ?? null"
                           [checked]="!!color"
                           [disabled]="!color && store.chartFull()"
                           (change)="store.toggle(product.id)"
                         />
-                        <span
-                          class="key"
-                          [style.background]="color ?? null"
-                          aria-hidden="true"
-                        ></span>
                         <span class="name" [title]="name">{{ name }}</span>
                       </label>
                       @if (groups.groups().length) {
@@ -130,6 +128,7 @@ type Action = 'archive' | 'delete';
                         <label class="public" title="Public products are visible to every user">
                           <input
                             type="checkbox"
+                            class="tick"
                             [checked]="product.public"
                             (change)="store.setPublic(product.id, !product.public)"
                             [attr.aria-label]="'Public: ' + name"
@@ -266,14 +265,18 @@ type Action = 'archive' | 'delete';
     </ng-template>
   `,
   styles: `
+    :host {
+      font-family: var(--mono);
+    }
     .open {
-      padding: 0.35rem 0.85rem;
+      height: 2.1rem;
+      padding: 0 0.85rem;
       border: 1px solid var(--border);
       border-radius: 10px;
       background: rgb(21 27 32 / 0.7);
       color: var(--ink-2);
       font: inherit;
-      font-size: 0.85rem;
+      font-size: 0.8rem;
       cursor: pointer;
     }
     .open:hover {
@@ -281,18 +284,15 @@ type Action = 'archive' | 'delete';
       color: var(--ink);
     }
     dialog {
-      width: min(36rem, calc(100vw - 2rem));
-      max-height: min(40rem, calc(100vh - 4rem));
-      padding: 1.25rem 1.5rem;
+      width: min(38rem, calc(100vw - 2rem));
+      max-height: min(42rem, calc(100vh - 4rem));
+      padding: 1.5rem 1.75rem;
       border: 1px solid var(--border);
-      border-radius: 14px;
+      border-radius: 4px;
       background: var(--surface);
       color: var(--ink-2);
+      font-size: 0.8125rem;
       box-shadow: 0 20px 50px rgb(0 0 0 / 0.5);
-    }
-    dialog::backdrop {
-      background: rgb(13 18 21 / 0.6);
-      backdrop-filter: blur(4px);
     }
     .body,
     section {
@@ -301,34 +301,46 @@ type Action = 'archive' | 'delete';
       gap: 0.6rem;
     }
     .body {
-      gap: 1.25rem;
+      gap: 1.5rem;
     }
     header {
       display: flex;
       align-items: baseline;
       justify-content: space-between;
-    }
-    h2,
-    h3 {
-      margin: 0;
-      font-size: 0.75rem;
-      font-weight: 600;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      color: var(--ink-2);
+      gap: 1rem;
+      padding-bottom: 0.9rem;
+      border-bottom: 1px dashed var(--rule);
     }
     h2 {
-      font-size: 0.85rem;
+      margin: 0;
+      font-family: var(--sans);
+      font-size: 1.25rem;
+      font-weight: 600;
       color: var(--ink);
     }
     h3 {
       display: flex;
-      gap: 0.5rem;
-      padding-bottom: 0.4rem;
-      border-bottom: 1px solid var(--grid);
+      align-items: center;
+      gap: 0.6rem;
+      margin: 0;
+      font-size: 0.6875rem;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--ink);
+    }
+    h3::after {
+      content: '';
+      flex: 1;
+      order: 1;
+      border-bottom: 1px solid var(--rule);
+    }
+    h3 .count {
+      order: 2;
     }
     .count,
-    .help {
+    .help,
+    .shared {
       margin: 0;
       font-size: 0.75rem;
       font-weight: 400;
@@ -345,16 +357,17 @@ type Action = 'archive' | 'delete';
       list-style: none;
     }
     li {
-      padding: 0.3rem 0.5rem;
-      border-radius: 8px;
+      padding: 0.3rem 0.4rem;
+      border-radius: 4px;
     }
     li:hover {
-      background: rgb(203 213 219 / 0.06);
+      background: rgb(203 213 219 / 0.05);
     }
     .row {
       display: flex;
       align-items: center;
       gap: 0.5rem;
+      min-height: 2rem;
     }
     label {
       display: flex;
@@ -364,43 +377,29 @@ type Action = 'archive' | 'delete';
       min-width: 0;
       cursor: pointer;
     }
-    input {
-      accent-color: var(--steel);
-    }
-    .key {
-      flex: none;
-      width: 14px;
-      height: 2px;
-      border-radius: 1px;
-      background: var(--border);
-    }
     .name {
       flex: 1;
       min-width: 0;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      font-size: 0.875rem;
+      color: var(--muted);
     }
     li.shown .name {
       color: var(--ink);
     }
-    li.archived .name {
-      color: var(--muted);
-    }
     .empty {
       color: var(--muted);
-      font-size: 0.875rem;
     }
     .icon {
       display: grid;
       flex: none;
       place-items: center;
-      width: 1.6rem;
-      height: 1.6rem;
+      width: 1.75rem;
+      height: 1.75rem;
       padding: 0;
       border: 0;
-      border-radius: 6px;
+      border-radius: 4px;
       background: none;
       color: var(--muted);
       cursor: pointer;
@@ -419,72 +418,73 @@ type Action = 'archive' | 'delete';
       background: rgb(203 213 219 / 0.1);
       color: var(--ink);
     }
-    .icon.danger:hover,
-    .icon.danger:focus-visible {
-      background: rgb(230 103 103 / 0.15);
-      color: var(--danger);
-    }
     .text-button {
       flex: none;
-      padding: 0.25rem 0.6rem;
-      border: 1px solid var(--border);
-      border-radius: 6px;
+      padding: 0.3rem 0;
+      border: 0;
       background: none;
-      color: var(--ink-2);
+      color: var(--link);
       font: inherit;
-      font-size: 0.8rem;
       cursor: pointer;
     }
     .text-button:hover,
     .text-button:focus-visible {
-      border-color: var(--steel);
-      color: var(--ink);
+      text-decoration: underline;
     }
     .primary {
-      padding: 0.35rem 0.9rem;
-      border: 0;
-      border-radius: 8px;
-      background: var(--steel);
-      color: #fff;
+      display: inline-flex;
+      align-items: center;
+      gap: 1.5rem;
+      min-height: 2.25rem;
+      padding: 0 0.9rem;
+      border: 1px solid var(--ink);
+      border-radius: 4px;
+      background: var(--ink);
+      color: var(--page);
       font: inherit;
-      font-size: 0.85rem;
       font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
       cursor: pointer;
     }
     .primary:hover {
-      background: #6d889b;
+      background: #fff;
     }
     .done {
       align-self: flex-end;
-      padding: 0.55rem 1rem;
+      min-height: 2.75rem;
+      padding: 0 1.1rem;
     }
     .groups {
       display: flex;
       flex-direction: column;
-      gap: 0.35rem;
+      gap: 0.5rem;
     }
     .group-head {
       display: flex;
       align-items: center;
       gap: 0.5rem;
       margin-top: 0.4rem;
-      padding: 0 0.5rem;
+      padding: 0 0.4rem;
+      border-bottom: 1px dotted var(--leader);
     }
     .group-name {
       flex: 1;
       min-width: 0;
-      padding: 0.2rem 0.4rem;
+      padding: 0.3rem 0.4rem;
       border: 1px solid transparent;
-      border-radius: 6px;
+      border-radius: 4px;
       background: none;
       color: var(--ink);
       font: inherit;
-      font-size: 0.8rem;
+      font-size: 0.75rem;
       font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
     }
     input.group-name:hover,
     input.group-name:focus {
-      border-color: var(--border);
+      border-color: var(--rule);
     }
     ul.cdk-drop-list {
       min-height: 1.75rem;
@@ -504,41 +504,33 @@ type Action = 'archive' | 'delete';
       stroke: currentColor;
       stroke-width: 2;
     }
-    li:not(:hover) .grip {
-      opacity: 0.4;
-    }
     label.public {
       flex: none;
-      gap: 0.3rem;
+      gap: 0.4rem;
       font-size: 0.75rem;
       color: var(--ink-2);
-    }
-    .shared {
-      flex: none;
-      font-size: 0.75rem;
-      color: var(--muted);
     }
     .move {
       flex: none;
       max-width: 8rem;
-      padding: 0.2rem 0.3rem;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      background: rgb(13 18 21 / 0.55);
+      padding: 0.25rem 0.3rem;
+      border: 1px solid rgb(203 213 219 / 0.25);
+      border-radius: 4px;
+      background: var(--field);
       color: var(--ink-2);
       font: inherit;
       font-size: 0.75rem;
     }
     .confirm {
       margin: 0.4rem 0 0.2rem;
-      padding: 0.6rem 0.75rem;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      background: rgb(95 120 138 / 0.12);
+      padding: 0.75rem 0;
+      border-top: 1px dashed var(--rule);
+      border-bottom: 1px dashed var(--rule);
       font-size: 0.8rem;
     }
     .confirm p {
-      margin: 0 0 0.5rem;
+      margin: 0 0 0.6rem;
+      line-height: 1.5;
     }
     .confirm strong {
       color: var(--ink);
@@ -546,11 +538,15 @@ type Action = 'archive' | 'delete';
       overflow-wrap: anywhere;
     }
     .confirm.danger {
-      border-color: rgb(230 103 103 / 0.4);
-      background: rgb(230 103 103 / 0.1);
+      border-color: rgb(230 103 103 / 0.5);
+    }
+    .confirm.danger p {
+      color: var(--danger);
     }
     .confirm.danger .primary {
+      border-color: #b04a4a;
       background: #b04a4a;
+      color: #fff;
     }
     .confirm.danger .primary:hover {
       background: #c25656;
@@ -558,7 +554,8 @@ type Action = 'archive' | 'delete';
     .actions {
       display: flex;
       justify-content: flex-end;
-      gap: 0.5rem;
+      align-items: center;
+      gap: 1rem;
     }
   `,
 })

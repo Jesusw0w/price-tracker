@@ -10,7 +10,7 @@ import hashlib
 import json
 import secrets
 from dataclasses import dataclass
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from urllib.parse import urlencode
 
 import requests
@@ -29,6 +29,13 @@ SESSION_COOKIE = "__Host-session"
 LOGIN_COOKIE = "__Host-login"
 LOGIN_MINUTES = 10
 TOKEN_TIMEOUT_S = 10
+
+LoginPage = Literal["login", "reset"]
+# Cognito's hosted pages that end in a sign-in; all take /oauth2/authorize's parameters
+_LOGIN_PATHS: dict[LoginPage, str] = {
+    "login": "oauth2/authorize",
+    "reset": "forgotPassword",
+}
 
 
 class LoginFailed(Exception):
@@ -49,7 +56,7 @@ def _redirect_uri() -> str:
     return f"{settings.public_url}/api/auth/callback"
 
 
-def login_redirect() -> RedirectResponse:
+def login_redirect(page: LoginPage = "login") -> RedirectResponse:
     """Start the code flow: keep state and PKCE verifier, send the user to Cognito."""
     state = secrets.token_urlsafe(32)
     verifier = secrets.token_urlsafe(64)
@@ -70,7 +77,7 @@ def login_redirect() -> RedirectResponse:
         }
     )
     response = RedirectResponse(
-        f"https://{settings.cognito_domain}/oauth2/authorize?{query}",
+        f"https://{settings.cognito_domain}/{_LOGIN_PATHS[page]}?{query}",
         status.HTTP_302_FOUND,
     )
     response.set_cookie(

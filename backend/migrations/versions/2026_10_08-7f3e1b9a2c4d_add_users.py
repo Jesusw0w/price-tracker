@@ -53,6 +53,10 @@ def upgrade() -> None:
         sa.Column("user_sub", sa.String(length=64), primary_key=True),
         sa.Column("data", sa.JSON(), nullable=False),
     )
+    # No policies, so Supabase's public REST API can't reach them; the app's owner
+    # role bypasses RLS
+    for table in ("sessions", "user_settings"):
+        op.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")
 
 
 def downgrade() -> None:

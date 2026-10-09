@@ -62,6 +62,12 @@ describe('Account', () => {
     expect(account.saveFailed()).toBe(true);
   });
 
+  it('starts a password reset through the backend login, which keeps PKCE', async () => {
+    const { account } = await load();
+    account.signIn('reset');
+    expect(assign).toHaveBeenCalledWith('/api/auth/login?page=reset');
+  });
+
   it('saves pending changes before signing out of the app and of Cognito', async () => {
     const { account, http } = await load();
     account.update({ background: 'a.webp' });

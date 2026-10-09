@@ -257,6 +257,19 @@ def test_login_opens_a_session_and_logout_ends_it(
     assert anonymous.get("/api/me").status_code == 401
 
 
+def test_password_reset_starts_a_login_on_cognitos_reset_page(
+    anonymous: TestClient,
+) -> None:
+    response = anonymous.get(
+        "/api/auth/login", params={"page": "reset"}, follow_redirects=False
+    )
+    location = urlsplit(response.headers["location"])
+    assert (response.status_code, location.path) == (302, "/forgotPassword")
+    assert parse_qs(location.query)["code_challenge_method"] == ["S256"]
+    assert response.headers["set-cookie"].startswith(f"{auth.LOGIN_COOKIE}=")
+    assert anonymous.get("/api/auth/login", params={"page": "x"}).status_code == 422
+
+
 @pytest.mark.parametrize(
     ("aud", "status", "wrong_state"),
     [

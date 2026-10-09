@@ -79,6 +79,7 @@ import { label, money, ProductStore } from '../products';
     }
     caption {
       caption-side: top;
+      font-family: var(--mono);
       padding-bottom: 0.75rem;
       text-align: left;
       font-size: 0.75rem;
@@ -118,6 +119,8 @@ import { label, money, ProductStore } from '../products';
       text-decoration: underline;
     }
     .num {
+      font-family: var(--mono);
+      font-size: 0.8125rem;
       text-align: right;
       font-variant-numeric: tabular-nums;
       color: var(--ink);
@@ -134,7 +137,7 @@ import { label, money, ProductStore } from '../products';
       border-radius: 1px;
     }
     .badge {
-      color: var(--good);
+      color: var(--good-text);
       font-weight: 600;
     }
     .pending {

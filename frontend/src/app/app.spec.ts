@@ -53,7 +53,28 @@ describe('App', () => {
     await fixture.whenStable();
 
     const el = fixture.nativeElement as HTMLElement;
-    expect(el.querySelector('.signin button')?.textContent).toContain('Sign in');
+    expect(el.querySelector('app-login button')?.textContent).toContain('Sign in');
     expect(el.querySelector('[role="alert"]')).toBeNull();
+    expect(el.querySelector('app-sidebar')).toBeNull();
+  });
+
+  it('offers a retry when the server is unreachable', async () => {
+    TestBed.configureTestingModule({ imports: [App], providers: [provideHttpClientTesting()] });
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne('/backgrounds/index.json').flush([]);
+    const down = { status: 503, statusText: 'Service Unavailable' };
+    http.expectOne('/api/me').flush(null, down);
+    http.expectOne('/api/products').flush(null, down);
+    await fixture.whenStable();
+
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('[role="alert"]')?.textContent).toContain("Can't reach the server");
+    el.querySelector<HTMLButtonElement>('[role="alert"] button')?.click();
+    TestBed.tick();
+    http.expectOne('/api/me');
+    http.expectOne('/api/products');
   });
 });

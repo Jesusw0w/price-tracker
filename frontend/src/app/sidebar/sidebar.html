@@ -1,0 +1,186 @@
+<div class="masthead">
+  <p class="title">Price Tracker</p>
+  <span class="count">{{ store.slots().size }}/{{ maxShown }} on chart</span>
+</div>
+
+<form [formRoot]="addForm" class="add">
+  <label for="link" class="eyebrow">Track a product</label>
+  <div class="row">
+    <input
+      id="link"
+      [formField]="addForm.link"
+      placeholder="https://…"
+      autocomplete="off"
+      [attr.aria-invalid]="showError()"
+      aria-describedby="link-help"
+    />
+    <button type="submit" class="add-button" [disabled]="addForm().submitting()">Add</button>
+  </div>
+  <p
+    id="link-help"
+    class="help"
+    [class.error]="showError()"
+    [attr.role]="showError() ? 'alert' : null"
+  >
+    {{ showError() ? addForm.link().errors()[0].message : 'Prices appear after the next scrape.' }}
+  </p>
+</form>
+
+<section class="filters" aria-label="Filter products">
+  <div class="search">
+    <span aria-hidden="true">/</span>
+    <input
+      type="search"
+      aria-label="Filter by name"
+      placeholder="filter"
+      autocomplete="off"
+      [value]="query()"
+      (input)="query.set($any($event.target).value)"
+    />
+    <button
+      type="button"
+      class="plain"
+      (click)="sort.set(sorts[sort()].next)"
+      [attr.aria-label]="'Sort: ' + sorts[sort()].label + '. Change sort'"
+    >
+      sort: {{ sorts[sort()].label }}
+    </button>
+  </div>
+  <div class="flags" role="group" aria-label="Show only">
+    @for (flag of flagList; track flag.id) {
+      @let on = flags().has(flag.id);
+      <button
+        type="button"
+        class="plain flag"
+        [attr.aria-pressed]="on"
+        (click)="toggleFlag(flag.id)"
+      >
+        <span class="box" aria-hidden="true">[{{ on ? 'x' : ' ' }}]</span> {{ flag.label }}
+        <span class="dim">{{ counts()[flag.id] }}</span>
+      </button>
+    }
+  </div>
+</section>
+
+<section class="tracked" aria-labelledby="tracked-heading">
+  <h2 id="tracked-heading" class="visually-hidden">Tracked products</h2>
+  <div class="groups" cdkDropListGroup>
+    @for (section of sections(); track section.group?.id ?? 'ungrouped') {
+      @let group = section.group;
+      @let state = groups.shownState(section);
+      @let groupLabel = group?.name ?? 'Ungrouped';
+      @if (group || groups.groups().length) {
+        <div class="group-head">
+          <input
+            type="checkbox"
+            class="tick"
+            [checked]="state === 'all'"
+            [indeterminate]="state === 'some'"
+            [disabled]="!section.products.length"
+            (change)="groups.toggleShown(section)"
+            [attr.aria-label]="'Show all of ' + groupLabel"
+          />
+          @if (group) {
+            <button
+              type="button"
+              class="group-toggle"
+              (click)="groups.toggleCollapsed(group.id)"
+              [attr.aria-expanded]="!group.collapsed"
+            >
+              <span class="group-name">{{ group.name }}</span>
+              <span class="rule" aria-hidden="true"></span>
+              <span class="dim">{{ section.products.length }}</span>
+              <span class="sign" aria-hidden="true">{{ group.collapsed ? '+' : '−' }}</span>
+            </button>
+          } @else {
+            <span class="group-toggle">
+              <span class="group-name">Ungrouped</span>
+              <span class="rule" aria-hidden="true"></span>
+              <span class="dim">{{ section.products.length }}</span>
+              <span class="sign" aria-hidden="true"></span>
+            </span>
+          }
+        </div>
+      }
+      @if (!group?.collapsed) {
+        <ul
+          cdkDropList
+          [cdkDropListData]="group?.id ?? null"
+          [cdkDropListSortingDisabled]="!group"
+          [cdkDropListDisabled]="filtering()"
+          (cdkDropListDropped)="
+            groups.move($event.item.data, $event.container.data, $event.currentIndex)
+          "
+          [attr.aria-label]="groupLabel"
+        >
+          @for (product of section.products; track product.id) {
+            @let color = store.color(product.id);
+            @let last = product.history.at(-1);
+            @let name = label(product);
+            <li cdkDrag [cdkDragData]="product.id" [class.shown]="color">
+              <label>
+                <input
+                  type="checkbox"
+                  class="tick"
+                  [style.--key]="color ?? null"
+                  [checked]="!!color"
+                  [disabled]="!color && store.chartFull()"
+                  (change)="store.toggle(product.id)"
+                />
+                <span class="name" [title]="name">{{ name }}</span>
+              </label>
+              <span class="leader" aria-hidden="true"></span>
+              <span
+                class="price"
+                [class.low]="atLowest(product)"
+                [class.pending]="!last"
+                [title]="atLowest(product) ? 'At its lowest price' : ''"
+              >
+                @if (last) {
+                  @if (atLowest(product)) {
+                    <span aria-hidden="true">✓ </span>
+                  }
+                  {{ money(last.price, product.currency) }}
+                } @else {
+                  pending
+                }
+              </span>
+              @if (!filtering()) {
+                <span class="grip" cdkDragHandle title="Drag to another group">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="9" cy="6" r="1" />
+                    <circle cx="9" cy="12" r="1" />
+                    <circle cx="9" cy="18" r="1" />
+                    <circle cx="15" cy="6" r="1" />
+                    <circle cx="15" cy="12" r="1" />
+                    <circle cx="15" cy="18" r="1" />
+                  </svg>
+                </span>
+              }
+            </li>
+          } @empty {
+            <li class="empty">
+              {{
+                group
+                  ? 'Drag products here.'
+                  : groups.groups().length
+                    ? 'All grouped.'
+                    : 'Nothing tracked yet.'
+              }}
+            </li>
+          }
+        </ul>
+      }
+    }
+    @if (noMatches()) {
+      <p class="empty">
+        Nothing matches.
+        <button type="button" class="plain link" (click)="clearFilters()">Clear filters</button>
+      </p>
+    }
+  </div>
+  @if (store.chartFull()) {
+    <p class="help">The chart holds {{ maxShown }} products. Untick one to swap.</p>
+  }
+  <app-new-group />
+</section>
