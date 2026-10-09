@@ -8,6 +8,7 @@ from fastmcp.client.transports import FastMCPTransport
 from mcp.types import TextContent
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.config import settings
 from app.db.models import PriceRow, ProductRow
 from app.mcp.mcp import mcp
 
@@ -15,6 +16,7 @@ pytestmark = pytest.mark.anyio
 
 TRACKED: Final[int] = 1
 UNTRACKED: Final[int] = 2
+SOMEONE_ELSES: Final[int] = 3
 TRACKED_URL: Final[str] = "https://www.amazon.es/dp/B0BMG3FBND"
 NEW_URL: Final[str] = "https://shop.example/p/gpu"
 TODAY: Final[datetime.date] = datetime.date.today()
@@ -28,6 +30,7 @@ async def client(
         [
             ProductRow(
                 id=TRACKED,
+                owner_id=settings.owner_sub,
                 url=TRACKED_URL,
                 domain="amazon.es",
                 name="RX 7900 XT",
@@ -35,9 +38,16 @@ async def client(
             ),
             ProductRow(
                 id=UNTRACKED,
+                owner_id=settings.owner_sub,
                 url="https://shop.example/p/old",
                 domain="shop.example",
                 tracked=False,
+            ),
+            ProductRow(
+                id=SOMEONE_ELSES,
+                owner_id="someone-else",
+                url="https://shop.example/p/private",
+                domain="shop.example",
             ),
             PriceRow(product_id=TRACKED, date=TODAY, price_cents=110000),
             PriceRow(
@@ -141,6 +151,7 @@ async def test_new_trackers_can_be_refreshed_once_per_cooldown(
     [
         ("get_price_summary", {"product_id": 9, "days": 7}, "No product"),
         ("get_refresh_status", {"product_ids": [9]}, "No product"),
+        ("get_price_history", {"product_id": SOMEONE_ELSES, "days": 7}, "No product"),
         ("request_refresh", {"product_ids": [TRACKED, UNTRACKED]}, "Not tracked"),
         ("add_tracker", {"url": TRACKED_URL}, "Already tracking"),
         ("add_tracker", {"url": "http://shop.example/p/1"}, "https://"),

@@ -4,7 +4,7 @@ Run everything from this directory.
 
 ```bash
 uv sync --extra dev
-cp .env.example .env                  # set PT_DATABASE_URL and PT_API_TOKEN, or export them
+cp .env.example .env                  # set the database, token and Cognito values, or export them
 uv run alembic upgrade head           # create or update the schema
 uv run fastapi dev                    # API on http://localhost:8000, docs at /docs
 uv run python -m app.scraper.run      # scrape tracked products, save today's prices
@@ -21,17 +21,43 @@ review the generated file in `migrations/versions/`, then `alembic upgrade head`
 
 ## Authentication
 
-The app has one owner and one token. Every call to `/api` and `/mcp` must send
-`Authorization: Bearer <PT_API_TOKEN>`; `/health` stays open for probes. The UI asks for the
-token on its first 401 and keeps it in the browser's localStorage. MCP clients send it as a
-header, for example in Claude Code:
+Users sign in with a Cognito user pool, created by the stack. Accounts are invite only.
+
+- **UI and `/api`:** `/api/auth/login` sends the browser to Cognito's hosted sign-in page.
+  Cognito redirects to `/api/auth/callback`, and the backend exchanges the code (with PKCE)
+  and stores a session in the `sessions` table. The browser holds only a random session id,
+  in an `HttpOnly`, `Secure`, `SameSite=Strict` cookie, so page scripts can't read it and
+  other sites can't send it. Sessions last `PT_SESSION_DAYS` (14). `/health` stays open.
+- **What users see:** your own products, plus products other users made public. Only the
+  owner can archive, delete or share a product. Products start private. Each user's groups,
+  dashboard picks and background are saved in `user_settings`.
+- **`/mcp`:** MCP clients can't do a browser login, so they still send
+  `Authorization: Bearer <PT_API_TOKEN>`. They act as the user `PT_OWNER_SUB`; leave it
+  empty to turn `/mcp` off. The token no longer opens `/api`.
 
 ```bash
 claude mcp add --transport http price-tracker <url>/mcp --header "Authorization: Bearer <token>"
 ```
 
-To rotate the token, change it (in `.env`, or in SSM when deployed) and enter the new one
-in the UI.
+### Managing users
+
+Get the pool id from `sam list stack-outputs` (`UserPoolId`).
+
+```bash
+# Invite: Cognito emails a temporary password, and the first sign-in sets a new one
+aws cognito-idp admin-create-user --user-pool-id <pool> --username friend@example.com \
+  --user-attributes Name=email,Value=friend@example.com Name=email_verified,Value=true
+# A user's sub, e.g. for PT_OWNER_SUB or the migration below
+aws cognito-idp admin-get-user --user-pool-id <pool> --username you@example.com \
+  --query "UserAttributes[?Name=='sub'].Value" --output text
+aws cognito-idp admin-disable-user --user-pool-id <pool> --username friend@example.com
+```
+
+Disabling a user stops new sign-ins. Sessions that are already open last until they expire,
+so to lock someone out right away, also delete their sessions:
+`DELETE FROM sessions WHERE user_sub = '<sub>';`
+
+Cognito's built-in email sender allows about 50 emails a day, which is plenty for invites.
 
 ## Deploy to AWS (optional)
 
@@ -55,6 +81,22 @@ reach works as the database.
   ```
 - First deploy: `uv run nox -s deploy -- --guided`. It saves your answers to
   `samconfig.toml`. After that, `uv run nox -s deploy_ui` uploads the UI.
+- `PublicUrl` (in `parameter_overrides` in `samconfig.toml`) must be the `UiUrl` output
+  without the trailing slash. A brand-new stack doesn't know it yet: deploy once, copy
+  `UiUrl` into the parameter, and deploy again.
+
+### Adding sign-in to an existing deployment
+
+The migration needs an owner for the products that already exist. That owner is a Cognito
+user, and the pool comes from the deploy. So the order matters, and the API returns errors
+between the deploy and the migration:
+
+1. `uv run nox -s deploy`. This creates the user pool and ships the new code.
+2. Invite yourself (see *Managing users*), then read your `sub`.
+3. Back up the database, then run `uv run alembic -x owner=<your sub> upgrade head`.
+4. Put `OwnerSub=<your sub>` in `parameter_overrides`, then `uv run nox -s deploy` to turn
+   `/mcp` back on, and `uv run nox -s deploy_ui`.
+5. Copy `CognitoDomain` and `CognitoClientId` from the outputs into `.env` for local runs.
 
 ### Build and redeploy
 
@@ -109,3 +151,5 @@ aws lambda update-function-configuration --function-name "$fn" --description "re
 
 `sam delete --stack-name <stack>` removes the function, API, role and log group. The
 parameter is not part of the stack: `aws ssm delete-parameter --name /price-tracker/database-url`.
+The user pool is retained, so a stack delete never deletes accounts. Delete it from the
+Cognito console when you really mean to.

@@ -3,7 +3,8 @@
 Read: list_trackers, get_price_history, get_price_summary, get_refresh_status.
 Write: add_tracker (any https shop, capped), request_refresh (with a cooldown).
 
-There are no delete tools. Every tool uses the same service layer as /api.
+There are no delete tools. Every tool uses the same service layer as /api, acting as
+the owner (``settings.owner_sub``), the only user the MCP token stands for.
 """
 
 # Optional: is_a_good_deal, backed by Bedrock. | set_target_price
@@ -14,6 +15,7 @@ from fastmcp.exceptions import ToolError
 from pydantic import Field
 
 from app.auth import OwnerTokenVerifier
+from app.config import settings
 from app.db.database import SessionLocal
 from app.links import InvalidLink
 from app.products import (
@@ -43,12 +45,14 @@ mcp = FastMCP(name="Price Tracker", mask_error_details=True, auth=OwnerTokenVeri
 
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": False})
 def list_trackers() -> list[ProductSummary]:
-    """List tracked products and their latest price. Call this first for ids.
+    """List your tracked products, and other users' public ones, with latest price.
+
+    Call this first for ids.
 
     Price is null for products not scraped yet.
     """
     with SessionLocal() as session:
-        return [summarize(p) for p in tracked_products(session)]
+        return [summarize(p) for p in tracked_products(session, settings.owner_sub)]
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": False})
@@ -61,7 +65,7 @@ def get_price_history(product_id: ProductId, days: Days) -> list[PricePoint]:
     """
     with SessionLocal() as session:
         try:
-            return price_history(session, product_id, days)
+            return price_history(session, settings.owner_sub, product_id, days)
         except UnknownProduct as e:
             raise ToolError(str(e)) from e
 
@@ -76,7 +80,7 @@ def get_price_summary(product_id: ProductId, days: Days) -> PriceSummary:
     """
     with SessionLocal() as session:
         try:
-            return price_summary(session, product_id, days)
+            return price_summary(session, settings.owner_sub, product_id, days)
         except UnknownProduct as e:
             raise ToolError(str(e)) from e
 
@@ -92,7 +96,7 @@ def get_refresh_status(product_ids: ProductIds) -> list[RefreshInfo]:
     """
     with SessionLocal() as session:
         try:
-            return refresh_status(session, product_ids)
+            return refresh_status(session, settings.owner_sub, product_ids)
         except UnknownProduct as e:
             raise ToolError(str(e)) from e
 
@@ -108,7 +112,7 @@ def add_tracker(url: str) -> ProductSummary:
     """
     with SessionLocal() as session:
         try:
-            return summarize(track(session, url))
+            return summarize(track(session, settings.owner_sub, url))
         except (InvalidLink, AlreadyTracked, TooManyTrackers) as e:
             raise ToolError(str(e)) from e
 
@@ -138,7 +142,7 @@ def request_refresh(product_ids: ProductIds) -> list[RefreshInfo]:
     """
     with SessionLocal() as session:
         try:
-            return queue_refresh(session, product_ids)
+            return queue_refresh(session, settings.owner_sub, product_ids)
         except (UnknownProduct, NotTracked) as e:
             raise ToolError(str(e)) from e
 

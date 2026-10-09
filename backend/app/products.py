@@ -3,7 +3,7 @@ import statistics
 from typing import Annotated
 
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, func, select
+from sqlalchemy import ColumnElement, delete, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.config import settings
@@ -40,6 +40,8 @@ class Product(BaseModel):
     url: str
     name: str | None = None
     currency: str | None = None
+    public: bool = False
+    mine: bool = True  # only the owner may archive, delete or share it
     history: list[PricePoint]  # oldest first
 
 
@@ -77,61 +79,71 @@ def _as_utc(moment: datetime.datetime) -> datetime.datetime:
     return moment if moment.tzinfo else moment.replace(tzinfo=datetime.UTC)
 
 
-def to_product(row: ProductRow) -> Product:
+def _visible_to(user: str) -> ColumnElement[bool]:
+    return or_(ProductRow.owner_id == user, ProductRow.public)
+
+
+def to_product(row: ProductRow, user: str) -> Product:
     return Product(
         id=row.id,
         url=row.url,
         name=row.name,
         currency=row.currency,
+        public=row.public,
+        mine=row.owner_id == user,
         history=[
             PricePoint(date=p.date, price=p.price_cents / 100) for p in row.prices
         ],
     )
 
 
-def tracked_products(session: Session) -> list[Product]:
-    return _products(session, tracked=True)
+def tracked_products(session: Session, user: str) -> list[Product]:
+    """The user's tracked products and everyone's public ones."""
+    return _products(session, user, ProductRow.tracked.is_(True), _visible_to(user))
 
 
-def archived_products(session: Session) -> list[Product]:
-    """Untracked products, with their history. Tracking the URL again restores one."""
-    return _products(session, tracked=False)
+def archived_products(session: Session, user: str) -> list[Product]:
+    """The user's untracked products. Tracking the URL again restores one."""
+    return _products(session, user, ~ProductRow.tracked, ProductRow.owner_id == user)
 
 
-def _products(session: Session, *, tracked: bool) -> list[Product]:
+def _products(
+    session: Session, user: str, *where: ColumnElement[bool]
+) -> list[Product]:
     rows = session.scalars(
         select(ProductRow)
-        .where(ProductRow.tracked == tracked)
+        .where(*where)
         .order_by(ProductRow.added_at, ProductRow.id)
         .options(selectinload(ProductRow.prices))  # one query for all histories
     )
-    return [to_product(row) for row in rows]
+    return [to_product(row, user) for row in rows]
 
 
-def track(session: Session, link: str) -> Product:
+def track(session: Session, user: str, link: str) -> Product:
     """Start tracking a product. If it was tracked before, its price history is kept.
 
     Raises:
         InvalidLink: The link is not an https link to a public website.
-        AlreadyTracked: The product is already tracked.
-        TooManyTrackers: ``settings.max_trackers`` products are tracked already.
+        AlreadyTracked: The user already tracks the product.
+        TooManyTrackers: The user tracks ``settings.max_trackers`` products already.
     """
     url = canonical_url(link)
-    row = session.scalar(select(ProductRow).where(ProductRow.url == url))
+    mine = ProductRow.owner_id == user
+    row = session.scalar(select(ProductRow).where(mine, ProductRow.url == url))
     if row is not None and row.tracked:
         raise AlreadyTracked("Already tracking this product")
     # Every tracker costs a scrape; the cap bounds what a looping agent can queue
     tracked = session.scalar(
-        select(func.count()).select_from(ProductRow).where(ProductRow.tracked)
+        select(func.count()).select_from(ProductRow).where(mine, ProductRow.tracked)
     )
     if (tracked or 0) >= settings.max_trackers:
         raise TooManyTrackers(f"Tracking the maximum of {settings.max_trackers}")
     if row is None:
-        row = ProductRow(url=url, domain=site(url))
+        row = ProductRow(owner_id=user, url=url, domain=site(url))
         session.add(row)
     row.tracked = True
     session.commit()
-    return to_product(row)
+    return to_product(row, user)
 
 
 def summarize(product: Product) -> ProductSummary:
@@ -148,25 +160,53 @@ def summarize(product: Product) -> ProductSummary:
     )
 
 
-def product_row(session: Session, product_id: int) -> ProductRow:
-    """Return the product, tracked or not.
+def product_row(
+    session: Session, user: str, product_id: int, *, owned: bool = False
+) -> ProductRow:
+    """Return the product, tracked or not, if the user can see it (or owns it).
 
     Raises:
-        UnknownProduct: No product has this id.
+        UnknownProduct: No such product for this user. Someone else's private
+            product is unknown too, so probing ids reveals nothing.
     """
     row = session.get(ProductRow, product_id)
-    if row is None:
+    if row is None or (row.owner_id != user and (owned or not row.public)):
         raise UnknownProduct(f"No product with id {product_id}")
     return row
 
 
-def delete_product(session: Session, product_id: int) -> None:
-    """Delete the product, tracked or not, with its price history. Cannot be undone.
+def set_public(session: Session, user: str, product_id: int, public: bool) -> Product:
+    """Share the user's product with every user, or stop sharing it.
 
     Raises:
-        UnknownProduct: No product has this id.
+        UnknownProduct: The user owns no product with this id.
     """
-    row = product_row(session, product_id)
+    row = product_row(session, user, product_id, owned=True)
+    row.public = public
+    session.commit()
+    return to_product(row, user)
+
+
+def archive_product(session: Session, user: str, product_id: int) -> None:
+    """Stop tracking the user's product and keep its price history.
+
+    Raises:
+        NotTracked: The user tracks no product with this id.
+    """
+    row = session.get(ProductRow, product_id)
+    if row is None or row.owner_id != user or not row.tracked:
+        raise NotTracked("Product not tracked")
+    row.tracked = False
+    session.commit()
+
+
+def delete_product(session: Session, user: str, product_id: int) -> None:
+    """Delete the user's product, tracked or not, with its history. Cannot be undone.
+
+    Raises:
+        UnknownProduct: The user owns no product with this id.
+    """
+    row = product_row(session, user, product_id, owned=True)
     # The foreign keys have no ON DELETE CASCADE, so the child rows go first
     session.execute(delete(PriceRow).where(PriceRow.product_id == product_id))
     session.execute(delete(RefreshRow).where(RefreshRow.product_id == product_id))
@@ -174,13 +214,15 @@ def delete_product(session: Session, product_id: int) -> None:
     session.commit()
 
 
-def price_history(session: Session, product_id: int, days: int) -> list[PricePoint]:
+def price_history(
+    session: Session, user: str, product_id: int, days: int
+) -> list[PricePoint]:
     """Return prices from the last ``days`` days plus today, oldest first.
 
     Raises:
-        UnknownProduct: No product has this id.
+        UnknownProduct: The user can see no product with this id.
     """
-    product_row(session, product_id)
+    product_row(session, user, product_id)
     filtered_history = session.scalars(
         select(PriceRow)
         .where(
@@ -194,16 +236,18 @@ def price_history(session: Session, product_id: int, days: int) -> list[PricePoi
     ]
 
 
-def price_summary(session: Session, product_id: int, days: int) -> PriceSummary:
+def price_summary(
+    session: Session, user: str, product_id: int, days: int
+) -> PriceSummary:
     """Summarize prices from the last ``days`` days plus today.
 
     Price fields are None when no price was recorded in that window.
 
     Raises:
-        UnknownProduct: No product has this id.
+        UnknownProduct: The user can see no product with this id.
     """
-    row = product_row(session, product_id)
-    prices = [p.price for p in price_history(session, product_id, days)]
+    row = product_row(session, user, product_id)
+    prices = [p.price for p in price_history(session, user, product_id, days)]
     if not prices:
         return PriceSummary(id=row.id, name=row.name, currency=row.currency)
 
@@ -219,17 +263,17 @@ def price_summary(session: Session, product_id: int, days: int) -> PriceSummary:
     )
 
 
-def product_rows(session: Session, product_ids: list[int]) -> list[ProductRow]:
+def product_rows(
+    session: Session, user: str, product_ids: list[int]
+) -> list[ProductRow]:
     """Return the products in the order given, without duplicates.
 
     Raises:
-        UnknownProduct: Some ids have no product; the message lists them all.
+        UnknownProduct: The user can't see some ids; the message lists them all.
     """
     unique = list(dict.fromkeys(product_ids))
-    rows = {
-        row.id: row
-        for row in session.scalars(select(ProductRow).where(ProductRow.id.in_(unique)))
-    }
+    query = select(ProductRow).where(ProductRow.id.in_(unique), _visible_to(user))
+    rows = {row.id: row for row in session.scalars(query)}
     if missing := [str(i) for i in unique if i not in rows]:
         raise UnknownProduct(f"No product with id {', '.join(missing)}")
     return [rows[i] for i in unique]
@@ -240,13 +284,15 @@ def _refreshes(session: Session, product_ids: list[int]) -> dict[int, RefreshRow
     return {row.product_id: row for row in session.scalars(query)}
 
 
-def refresh_status(session: Session, product_ids: list[int]) -> list[RefreshInfo]:
+def refresh_status(
+    session: Session, user: str, product_ids: list[int]
+) -> list[RefreshInfo]:
     """Each product's latest refresh request and the date of its newest price.
 
     Raises:
-        UnknownProduct: Some ids have no product.
+        UnknownProduct: The user can't see some ids.
     """
-    unique = [row.id for row in product_rows(session, product_ids)]
+    unique = [row.id for row in product_rows(session, user, product_ids)]
     last_price_dates = dict(
         session.execute(
             select(PriceRow.product_id, func.max(PriceRow.date))
@@ -269,17 +315,19 @@ def refresh_status(session: Session, product_ids: list[int]) -> list[RefreshInfo
     return infos
 
 
-def queue_refresh(session: Session, product_ids: list[int]) -> list[RefreshInfo]:
+def queue_refresh(
+    session: Session, user: str, product_ids: list[int]
+) -> list[RefreshInfo]:
     """Queue a refresh of each product, all or none.
 
     A product whose refresh is pending, running or recent keeps it. "Recent"
     means requested within ``settings.refresh_cooldown_minutes``.
 
     Raises:
-        UnknownProduct: Some ids have no product; nothing is queued.
+        UnknownProduct: The user can't see some ids; nothing is queued.
         NotTracked: Some products are not tracked; nothing is queued.
     """
-    rows = product_rows(session, product_ids)
+    rows = product_rows(session, user, product_ids)
     if untracked := [str(row.id) for row in rows if not row.tracked]:
         raise NotTracked(f"Not tracked: {', '.join(untracked)}")
     unique = [row.id for row in rows]
@@ -301,4 +349,4 @@ def queue_refresh(session: Session, product_ids: list[int]) -> list[RefreshInfo]
         refresh.finished_at = None
         refresh.error = None
     session.commit()
-    return refresh_status(session, unique)
+    return refresh_status(session, user, unique)

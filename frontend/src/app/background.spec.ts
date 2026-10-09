@@ -4,16 +4,19 @@ import { TestBed } from '@angular/core/testing';
 import { Background } from './background';
 
 describe('Background', () => {
-  async function load(images: string[]): Promise<Background> {
+  async function load(images: string[], saved: string | null = null): Promise<Background> {
     TestBed.configureTestingModule({ providers: [provideHttpClientTesting()] });
     const background = TestBed.inject(Background);
+    const http = TestBed.inject(HttpTestingController);
     TestBed.tick();
-    TestBed.inject(HttpTestingController).expectOne('/backgrounds/index.json').flush(images);
+    http.expectOne('/api/me').flush({
+      email: 'ana@example.com',
+      settings: { groups: [], dashboard: null, background: saved },
+    });
+    http.expectOne('/backgrounds/index.json').flush(images);
     await TestBed.inject(ApplicationRef).whenStable();
     return background;
   }
-
-  beforeEach(() => localStorage.clear());
 
   it('keeps the gradient until shuffled, then never repeats the current image', async () => {
     const background = await load(['a.webp', 'b c.webp']);
@@ -30,8 +33,7 @@ describe('Background', () => {
   });
 
   it('forgets a saved image that left the folder', async () => {
-    localStorage.setItem('price-tracker.background', 'gone.webp');
-    const background = await load(['a.webp']);
+    const background = await load(['a.webp'], 'gone.webp');
     expect(background.image()).toBeNull();
     expect(background.available()).toBe(true);
   });

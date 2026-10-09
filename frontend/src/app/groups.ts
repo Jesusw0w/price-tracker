@@ -1,4 +1,5 @@
-import { computed, effect, inject, Service, signal } from '@angular/core';
+import { computed, inject, Service } from '@angular/core';
+import { Account } from './account';
 import { Product, ProductStore } from './products';
 
 export interface Group {
@@ -14,24 +15,14 @@ export interface Section {
   products: Product[];
 }
 
-const STORAGE_KEY = 'price-tracker.groups';
-
-function read(): Group[] {
-  try {
-    const saved: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]');
-    return Array.isArray(saved) ? saved : [];
-  } catch {
-    return [];
-  }
-}
-
-/** User-made product groups, kept in this browser. */
+/** User-made product groups, saved with the account. */
 @Service()
 export class GroupStore {
   private readonly store = inject(ProductStore);
+  private readonly account = inject(Account);
 
   // Archived ids stay in their group, so a restored product returns to it
-  readonly groups = signal<Group[]>(read());
+  readonly groups = computed(() => this.account.settings().groups);
 
   readonly sections = computed<Section[]>(() => {
     const products = this.store.products();
@@ -50,17 +41,6 @@ export class GroupStore {
     return sections;
   });
 
-  constructor() {
-    effect(() => {
-      const groups = this.groups();
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(groups));
-      } catch {
-        // storage blocked: groups last for this visit
-      }
-    });
-  }
-
   /** Whether all, some or none of the section's products are on the dashboard. */
   shownState(section: Section): 'all' | 'some' | 'none' {
     const slots = this.store.slots();
@@ -77,7 +57,7 @@ export class GroupStore {
 
   create(name: string): void {
     const group = { id: crypto.randomUUID(), name, productIds: [], collapsed: false };
-    this.groups.update((groups) => [...groups, group]);
+    this.set((groups) => [...groups, group]);
   }
 
   rename(id: string, name: string): void {
@@ -90,12 +70,12 @@ export class GroupStore {
 
   /** Removes the group; its products become ungrouped. */
   remove(id: string): void {
-    this.groups.update((groups) => groups.filter((g) => g.id !== id));
+    this.set((groups) => groups.filter((g) => g.id !== id));
   }
 
   /** Drops a permanently deleted product from every group. */
   forget(productId: number): void {
-    this.groups.update((groups) =>
+    this.set((groups) =>
       groups.map((g) => ({ ...g, productIds: g.productIds.filter((id) => id !== productId) })),
     );
   }
@@ -108,7 +88,7 @@ export class GroupStore {
     const target = this.sections().find((s) => (s.group?.id ?? null) === to);
     // Positions count only shown products; archived ids hidden in the group are skipped
     const before = target?.products.map((p) => p.id).filter((id) => id !== productId)[index];
-    this.groups.update((groups) =>
+    this.set((groups) =>
       groups.map((g) => {
         const ids = g.productIds.filter((id) => id !== productId);
         if (g.id === to)
@@ -119,6 +99,10 @@ export class GroupStore {
   }
 
   private update(id: string, change: (group: Group) => Group): void {
-    this.groups.update((groups) => groups.map((g) => (g.id === id ? change(g) : g)));
+    this.set((groups) => groups.map((g) => (g.id === id ? change(g) : g)));
+  }
+
+  private set(change: (groups: Group[]) => Group[]): void {
+    this.account.update({ groups: change(this.groups()) });
   }
 }

@@ -1,7 +1,7 @@
 import datetime
-from typing import Literal
+from typing import Any, Literal
 
-from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import JSON, DateTime, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
@@ -12,9 +12,15 @@ RefreshStatus = Literal["pending", "running", "done", "failed"]
 class ProductRow(Base):
     __tablename__ = "products"
 
+    __table_args__ = (
+        UniqueConstraint("owner_id", "url", name="products_owner_id_url_key"),
+    )
+
     id: Mapped[int] = mapped_column(primary_key=True)
-    url: Mapped[str] = mapped_column(String(2048), unique=True)  # canonical form
-    domain: Mapped[str]  # picks the parser; "www." stripped
+    owner_id: Mapped[str] = mapped_column(String(64))  # Cognito sub
+    public: Mapped[bool] = mapped_column(default=False)
+    url: Mapped[str] = mapped_column(String(2048))
+    domain: Mapped[str]
     name: Mapped[str | None]  # None until first scraped
     currency: Mapped[str | None] = mapped_column(String(3))  # ISO 4217
     tracked: Mapped[bool] = mapped_column(default=True)
@@ -43,3 +49,22 @@ class RefreshRow(Base):
         DateTime(timezone=True)
     )
     error: Mapped[str | None]
+
+
+class SessionRow(Base):
+    """A signed-in browser. Deleting the row signs it out."""
+
+    __tablename__ = "sessions"
+
+    # SHA-256 of the cookie, so a leaked table holds no usable sessions
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_sub: Mapped[str] = mapped_column(String(64), index=True)
+    email: Mapped[str]
+    expires_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True))
+
+
+class UserSettingsRow(Base):
+    __tablename__ = "user_settings"
+
+    user_sub: Mapped[str] = mapped_column(String(64), primary_key=True)
+    data: Mapped[dict[str, Any]] = mapped_column(JSON)  # validated by UserSettings

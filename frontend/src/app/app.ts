@@ -1,5 +1,5 @@
 import { Component, computed, inject } from '@angular/core';
-import { ApiToken } from './api-token';
+import { Account, isUnauthorized } from './account';
 import { Background } from './background';
 import { DashboardPicker } from './dashboard-picker/dashboard-picker';
 import { PriceChart, Series } from './price-chart/price-chart';
@@ -15,16 +15,17 @@ import { Sidebar } from './sidebar/sidebar';
 })
 export class App {
   protected readonly store = inject(ProductStore);
-  private readonly token = inject(ApiToken);
+  protected readonly account = inject(Account);
   protected readonly background = inject(Background);
   protected readonly ranges = RANGES;
 
-  protected unlock(event: SubmitEvent, input: HTMLInputElement): void {
-    event.preventDefault();
-    this.token.set(input.value.trim());
-    input.value = '';
-    this.store.reload();
-  }
+  // A session can also expire after the page loaded
+  protected readonly signedOut = computed(
+    () => this.account.signedOut() || isUnauthorized(this.store.loadError()),
+  );
+  protected readonly loadError = computed(
+    () => this.account.loadError() || !!this.store.loadError(),
+  );
 
   protected readonly series = computed<Series[]>(() =>
     this.store.scoped().flatMap((p) => {

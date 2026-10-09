@@ -8,19 +8,25 @@ const product = (id: number): Product => ({
   url: `https://shop.example/p/${id}`,
   name: `Product ${id}`,
   currency: 'EUR',
+  public: false,
+  mine: true,
   history: [],
 });
 
-describe('Sidebar', () => {
-  beforeEach(() => localStorage.clear());
+const ME = {
+  email: 'ana@example.com',
+  settings: { groups: [], dashboard: null, background: null },
+};
 
+describe('Sidebar', () => {
   it('filters the dashboard but offers no archive or delete', async () => {
     TestBed.configureTestingModule({ imports: [Sidebar], providers: [provideHttpClientTesting()] });
     const fixture = TestBed.createComponent(Sidebar);
     fixture.detectChanges();
-    TestBed.inject(HttpTestingController)
-      .expectOne('/api/products')
-      .flush([product(1), product(2)]);
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne('/api/me').flush(ME);
+    TestBed.tick();
+    http.expectOne('/api/products').flush([product(1), product(2)]);
     await fixture.whenStable();
     const store = TestBed.inject(ProductStore);
     const el = fixture.nativeElement as HTMLElement;

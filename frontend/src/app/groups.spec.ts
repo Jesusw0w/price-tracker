@@ -1,7 +1,8 @@
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ApplicationRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { GroupStore, Section } from './groups';
+import { Account } from './account';
+import { Group, GroupStore, Section } from './groups';
 import { Product, ProductStore } from './products';
 
 const product = (id: number): Product => ({
@@ -9,6 +10,8 @@ const product = (id: number): Product => ({
   url: `https://shop.example/p/${id}`,
   name: `Product ${id}`,
   currency: 'EUR',
+  public: false,
+  mine: true,
   history: [],
 });
 
@@ -16,19 +19,23 @@ describe('GroupStore', () => {
   let groups: GroupStore;
   let store: ProductStore;
 
-  async function load(ids: number[]): Promise<void> {
+  async function load(ids: number[], saved: Group[] = []): Promise<void> {
     TestBed.configureTestingModule({ providers: [provideHttpClientTesting()] });
     groups = TestBed.inject(GroupStore);
     store = TestBed.inject(ProductStore);
+    const http = TestBed.inject(HttpTestingController);
     TestBed.tick();
-    TestBed.inject(HttpTestingController).expectOne('/api/products').flush(ids.map(product));
+    http.expectOne('/api/me').flush({
+      email: 'ana@example.com',
+      settings: { groups: saved, dashboard: null, background: null },
+    });
+    TestBed.tick();
+    http.expectOne('/api/products').flush(ids.map(product));
     await TestBed.inject(ApplicationRef).whenStable();
   }
 
   const layout = (sections: Section[]) =>
     sections.map((s) => [s.group?.name ?? '-', s.products.map((p) => p.id)]);
-
-  beforeEach(() => localStorage.clear());
 
   it('places products where they are dropped and keeps the rest ungrouped', async () => {
     await load([1, 2, 3, 4]);
@@ -50,11 +57,7 @@ describe('GroupStore', () => {
   });
 
   it('counts positions among shown products, skipping archived ids in the group', async () => {
-    localStorage.setItem(
-      'price-tracker.groups',
-      JSON.stringify([{ id: 'g', name: 'G', productIds: [9, 1, 2], collapsed: false }]),
-    );
-    await load([1, 2, 3]); // 9 is archived
+    await load([1, 2, 3], [{ id: 'g', name: 'G', productIds: [9, 1, 2], collapsed: false }]); // 9 is archived
     groups.move(3, 'g', 1); // between 1 and 2 as the user sees them
     expect(groups.groups()[0].productIds).toEqual([9, 1, 3, 2]);
   });
@@ -66,7 +69,7 @@ describe('GroupStore', () => {
     groups.remove(groups.groups()[0].id);
     TestBed.tick();
     expect(layout(groups.sections())).toEqual([['-', [1, 2]]]);
-    expect(JSON.parse(localStorage.getItem('price-tracker.groups')!)).toEqual([]);
+    expect(TestBed.inject(Account).settings().groups).toEqual([]);
   });
 
   it('shows or hides a whole group with one toggle', async () => {

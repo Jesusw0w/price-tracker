@@ -1,6 +1,7 @@
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ApplicationRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { Account, Settings } from './account';
 import { Product, ProductStore, RANGES, SERIES_COLORS } from './products';
 
 const product = (id: number, prices: [string, number][] = []): Product => ({
@@ -8,19 +9,23 @@ const product = (id: number, prices: [string, number][] = []): Product => ({
   url: `https://shop.example/p/${id}`,
   name: `Product ${id}`,
   currency: 'EUR',
+  public: false,
+  mine: true,
   history: prices.map(([date, price]) => ({ date, price })),
 });
-
-const SHOWN_KEY = 'price-tracker.dashboard';
 
 describe('ProductStore', () => {
   let store: ProductStore;
   let http: HttpTestingController;
 
-  async function load(products: Product[]): Promise<void> {
+  async function load(products: Product[], dashboard: Settings['dashboard'] = null) {
     TestBed.configureTestingModule({ providers: [provideHttpClientTesting()] });
     store = TestBed.inject(ProductStore);
     http = TestBed.inject(HttpTestingController);
+    TestBed.tick();
+    http
+      .expectOne('/api/me')
+      .flush({ email: 'ana@example.com', settings: { groups: [], dashboard, background: null } });
     TestBed.tick();
     http.expectOne('/api/products').flush(products);
     await TestBed.inject(ApplicationRef).whenStable();
@@ -28,8 +33,7 @@ describe('ProductStore', () => {
 
   const ten = () => Array.from({ length: 10 }, (_, i) => product(i + 1));
 
-  beforeEach(() => localStorage.clear());
-  afterEach(() => http.verify());
+  afterEach(() => http.verify({ ignoreCancelled: true }));
 
   it('shows the first products by default', async () => {
     await load(ten());
@@ -52,23 +56,28 @@ describe('ProductStore', () => {
     expect(store.color(2)).toBeUndefined();
   });
 
-  it('saves the selection and restores it on the next visit', async () => {
-    localStorage.setItem(
-      SHOWN_KEY,
-      JSON.stringify([
-        [7, 5],
-        [99, 0],
-      ]),
-    );
-    await load(ten());
-    expect([...store.slots()]).toEqual([[7, 5]]); // 99 is no longer tracked
+  it('restores the saved selection and saves changes to the account', async () => {
+    await load(ten(), [
+      [7, 5],
+      [99, 0],
+    ]);
+    expect([...store.slots()]).toEqual([[7, 5]]); // 99 is no longer visible
 
     store.toggle(3);
-    TestBed.tick();
-    expect(JSON.parse(localStorage.getItem(SHOWN_KEY)!)).toEqual([
+    expect(TestBed.inject(Account).settings().dashboard).toEqual([
       [7, 5],
       [3, 0],
     ]);
+  });
+
+  it('shares a product and keeps the answer from the API', async () => {
+    await load(ten());
+    const sharing = store.setPublic(2, true);
+    const patch = http.expectOne({ method: 'PATCH', url: '/api/products/2' });
+    expect(patch.request.body).toEqual({ public: true });
+    patch.flush({ ...product(2), public: true });
+    await sharing;
+    expect(store.products().find((p) => p.id === 2)?.public).toBe(true);
   });
 
   it('archives a product and restores it with its history', async () => {

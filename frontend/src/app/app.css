@@ -125,6 +125,32 @@ h1 {
   font-weight: 600;
 }
 
+.who {
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.85rem;
+  color: var(--ink-2);
+}
+
+.text-button {
+  padding: 0.35rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgb(21 27 32 / 0.7);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.text-button:hover,
+.text-button:focus-visible {
+  background: rgb(203 213 219 / 0.06);
+  color: var(--ink);
+}
+
 .card {
   padding: 1.25rem 1.5rem;
   border: 1px solid var(--border);
@@ -143,25 +169,22 @@ h1 {
   color: var(--danger);
 }
 
-.unlock {
+.signin {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: space-between;
   gap: 0.5rem;
-}
-
-.unlock input {
-  flex: 1;
-  min-width: 12rem;
-  padding: 0.55rem 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: rgb(13 18 21 / 0.55);
+  border-color: var(--border);
+  background: rgb(21 27 32 / 0.7);
   color: var(--ink);
-  font: inherit;
 }
 
-.unlock button {
+.signin p {
+  margin: 0;
+}
+
+.signin button {
   padding: 0.55rem 1rem;
   border: 0;
   border-radius: 8px;

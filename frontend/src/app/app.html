@@ -34,6 +34,10 @@
         </button>
       }
       <app-dashboard-picker />
+      @if (account.email(); as email) {
+        <span class="who" [title]="email">{{ email }}</span>
+        <button type="button" class="text-button" (click)="account.signOut()">Sign out</button>
+      }
       <div class="ranges" role="group" aria-label="Date range">
         @for (range of ranges; track range.label) {
           <button
@@ -48,15 +52,19 @@
     </div>
   </header>
 
-  @if (store.needsToken()) {
-    <form class="banner unlock" (submit)="unlock($event, key)">
-      <label for="api-token">API token</label>
-      <input id="api-token" #key type="password" required autocomplete="off" />
-      <button type="submit">Unlock</button>
-    </form>
-  } @else if (store.loadError()) {
+  @if (signedOut()) {
+    <div class="banner signin">
+      <p>Sign in to see your dashboard.</p>
+      <button type="button" (click)="account.signIn()">Sign in</button>
+    </div>
+  } @else if (loadError()) {
     <p class="banner" role="alert">
       Can't reach the API. Is <code>uv run fastapi dev</code> running?
+    </p>
+  }
+  @if (account.saveFailed()) {
+    <p class="banner" role="alert">
+      Couldn't save your dashboard settings. They last until you reload; try your change again.
     </p>
   }
 

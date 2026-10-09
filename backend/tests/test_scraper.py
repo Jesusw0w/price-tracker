@@ -116,7 +116,9 @@ def test_rescrape_same_day_overwrites_and_missing_price_is_skipped(
     session: Session,
 ) -> None:
     session.add(
-        ProductRow(id=ID, url="https://shop.example/p/1", domain="shop.example")
+        ProductRow(
+            id=ID, owner_id="u", url="https://shop.example/p/1", domain="shop.example"
+        )
     )
     session.commit()
     save_data.save(session, [Scraped(ID, "RX 7900 XT", 100000, "EUR")], DAY)

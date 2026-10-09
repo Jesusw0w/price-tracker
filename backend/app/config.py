@@ -14,9 +14,14 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=_root / ".env", env_prefix="PT_")
 
     database_url: str
-    api_token: SecretStr = Field(min_length=32)  # single owner, so one bearer token
+    api_token: SecretStr = Field(min_length=32)
+    owner_sub: str = ""  # Cognito sub that /mcp acts as; empty turns /mcp off
+    cognito_domain: str  # e.g. <prefix>.auth.eu-west-1.amazoncognito.com
+    cognito_client_id: str
+    public_url: str
+    session_days: int = 14
     refresh_cooldown_minutes: int = 30
-    max_trackers: int = 100
+    max_trackers: int = 100  # per user
 
 
 def _load_settings() -> Settings:

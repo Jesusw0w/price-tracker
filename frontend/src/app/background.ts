@@ -1,24 +1,16 @@
 import { httpResource } from '@angular/common/http';
-import { computed, Service, signal } from '@angular/core';
+import { computed, inject, Service } from '@angular/core';
+import { Account } from './account';
 
-const STORAGE_KEY = 'price-tracker.background';
-
-function read(): string {
-  try {
-    return localStorage.getItem(STORAGE_KEY) ?? '';
-  } catch {
-    return '';
-  }
-}
-
-/** A random wallpaper from public/backgrounds, remembered in this browser. */
+/** A random wallpaper from public/backgrounds, saved with the account. */
 @Service()
 export class Background {
+  private readonly account = inject(Account);
   private readonly index = httpResource<string[]>(() => '/backgrounds/index.json', {
     defaultValue: [],
   });
   private readonly images = computed(() => (this.index.hasValue() ? this.index.value() : []));
-  private readonly chosen = signal(read());
+  private readonly chosen = computed(() => this.account.settings().background ?? '');
 
   readonly available = computed(() => this.images().length > 0);
 
@@ -32,12 +24,6 @@ export class Background {
   shuffle(): void {
     const others = this.images().filter((name) => name !== this.chosen());
     if (!others.length) return;
-    const next = others[Math.floor(Math.random() * others.length)];
-    this.chosen.set(next);
-    try {
-      localStorage.setItem(STORAGE_KEY, next);
-    } catch {
-      // storage blocked: the pick lasts for this visit
-    }
+    this.account.update({ background: others[Math.floor(Math.random() * others.length)] });
   }
 }

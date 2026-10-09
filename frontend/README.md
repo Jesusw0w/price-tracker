@@ -13,8 +13,10 @@ npm test       # Vitest
 npm run build  # output in dist/frontend/browser
 ```
 
-The API needs the owner's token. On the first 401 the UI asks for it and keeps it in the
-browser's localStorage; it is the `PT_API_TOKEN` value from `backend/.env`.
+Sign-in goes through the backend: **Sign in** opens Cognito's hosted page, and the backend
+keeps the session in an HttpOnly cookie, so the UI never holds a token. Each user's groups,
+dashboard picks and background are saved to the API. Run the backend with the Cognito
+settings in `backend/.env`; the pool already accepts `http://localhost:4200` as a callback.
 
 ## Backgrounds
 

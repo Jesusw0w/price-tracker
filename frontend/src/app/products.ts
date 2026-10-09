@@ -1,6 +1,7 @@
 import { HttpClient, HttpErrorResponse, httpResource } from '@angular/common/http';
-import { computed, effect, inject, linkedSignal, Service, signal } from '@angular/core';
+import { computed, inject, linkedSignal, Service, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
+import { Account } from './account';
 
 export interface PricePoint {
   date: string;
@@ -12,6 +13,10 @@ export interface Product {
   url: string;
   name: string | null;
   currency: string | null;
+  /** Visible to every user. */
+  public: boolean;
+  /** Only the owner may archive, delete or share it; the rest are others' public ones. */
+  mine: boolean;
   history: PricePoint[];
 }
 
@@ -61,29 +66,19 @@ export function money(value: number, currency: string | null): string {
 /** Before the first scrape there is no name, so the shop's host stands in. */
 export const label = (p: Product) => p.name ?? new URL(p.url).hostname;
 
-const SHOWN_KEY = 'price-tracker.dashboard';
-
-/** The saved [product id, colour slot] pairs, or null when the user never chose any. */
-function savedSlots(): [number, number][] | null {
-  try {
-    const saved: unknown = JSON.parse(localStorage.getItem(SHOWN_KEY) ?? 'null');
-    return Array.isArray(saved) ? saved : null;
-  } catch {
-    return null; // storage blocked or value corrupted: fall back to the default selection
-  }
+interface SlotSource {
+  products: Product[];
+  settled: boolean;
 }
 
 @Service()
 export class ProductStore {
   private readonly http = inject(HttpClient);
+  private readonly account = inject(Account);
   private readonly list = httpResource<Product[]>(() => '/api/products', { defaultValue: [] });
 
   readonly products = computed(() => (this.list.hasValue() ? this.list.value() : []));
   readonly loadError = computed(() => this.list.error());
-  readonly needsToken = computed(() => {
-    const error = this.list.error();
-    return error instanceof HttpErrorResponse && error.status === 401;
-  });
   readonly range = signal<Range>(RANGES[RANGES.length - 1]);
 
   // Fetched only while the product dialog is open
@@ -97,15 +92,18 @@ export class ProductStore {
   );
 
   // Products shown on the dashboard: id -> colour slot. A slot sticks to its product so
-  // toggling one never repaints the rest.
-  readonly slots = linkedSignal<Product[], Map<number, number>>({
-    source: this.products,
-    computation: (products, previous) => {
+  // toggling one never repaints the rest. Products and settings load in parallel, so
+  // nothing is shown until the saved selection has arrived.
+  readonly slots = linkedSignal<SlotSource, Map<number, number>>({
+    source: () => ({ products: this.products(), settled: this.account.ready() }),
+    computation: ({ products, settled }, previous) => {
       const known = (id: number) => products.some((p) => p.id === id);
-      if (previous?.source.length) {
+      if (previous?.source.settled && previous.source.products.length) {
         return new Map([...previous.value].filter(([id]) => known(id)));
       }
-      const saved = savedSlots();
+      if (!settled) return new Map<number, number>();
+      // Untracked: saving the selection must not feed back into computing it
+      const saved = untracked(() => this.account.settings().dashboard);
       return saved
         ? new Map(saved.filter(([id, slot]) => known(id) && slot < SERIES_COLORS.length))
         : new Map(products.slice(0, DEFAULT_CHARTED).map((p, i) => [p.id, i]));
@@ -127,20 +125,6 @@ export class ProductStore {
   });
 
   readonly chartFull = computed(() => this.slots().size >= SERIES_COLORS.length);
-
-  constructor() {
-    effect(() => {
-      const slots = [...this.slots()];
-      // Before the list loads the selection is empty, and saving it would wipe the stored one
-      const status = this.list.status();
-      if (status !== 'resolved' && status !== 'local') return;
-      try {
-        localStorage.setItem(SHOWN_KEY, JSON.stringify(slots));
-      } catch {
-        // storage blocked: the selection just lasts for this visit
-      }
-    });
-  }
 
   color(id: number): string | undefined {
     const slot = this.slots().get(id);
@@ -168,6 +152,7 @@ export class ProductStore {
       }
       return next;
     });
+    this.account.update({ dashboard: [...this.slots()] });
   }
 
   reload(): void {
@@ -184,6 +169,18 @@ export class ProductStore {
     } catch (e) {
       const detail = e instanceof HttpErrorResponse ? e.error?.detail : undefined;
       return typeof detail === 'string' ? detail : 'Could not add the product, try again';
+    }
+  }
+
+  /** Shares one of the user's products with every user, or makes it private again. */
+  async setPublic(id: number, visible: boolean): Promise<void> {
+    try {
+      const product = await firstValueFrom(
+        this.http.patch<Product>(`/api/products/${id}`, { public: visible }),
+      );
+      this.list.value.update((products) => products.map((p) => (p.id === id ? product : p)));
+    } catch {
+      this.list.reload();
     }
   }
 

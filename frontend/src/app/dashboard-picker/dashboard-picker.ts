@@ -126,32 +126,45 @@ type Action = 'archive' | 'delete';
                           }
                         </select>
                       }
-                      <button
-                        type="button"
-                        class="icon"
-                        (click)="ask(product, 'archive')"
-                        [attr.aria-label]="'Archive ' + name"
-                        title="Archive"
-                      >
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <rect width="20" height="5" x="2" y="3" rx="1" />
-                          <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8" />
-                          <path d="M10 12h4" />
-                        </svg>
-                      </button>
-                      <button
-                        type="button"
-                        class="icon danger"
-                        (click)="ask(product, 'delete')"
-                        [attr.aria-label]="'Delete ' + name"
-                        title="Delete"
-                      >
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M10 11v6M14 11v6M3 6h18" />
-                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-                          <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                        </svg>
-                      </button>
+                      @if (product.mine) {
+                        <label class="public" title="Public products are visible to every user">
+                          <input
+                            type="checkbox"
+                            [checked]="product.public"
+                            (change)="store.setPublic(product.id, !product.public)"
+                            [attr.aria-label]="'Public: ' + name"
+                          />
+                          Public
+                        </label>
+                        <button
+                          type="button"
+                          class="icon"
+                          (click)="ask(product, 'archive')"
+                          [attr.aria-label]="'Archive ' + name"
+                          title="Archive"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <rect width="20" height="5" x="2" y="3" rx="1" />
+                            <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8" />
+                            <path d="M10 12h4" />
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
+                          class="icon danger"
+                          (click)="ask(product, 'delete')"
+                          [attr.aria-label]="'Delete ' + name"
+                          title="Delete"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M10 11v6M14 11v6M3 6h18" />
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                            <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                          </svg>
+                        </button>
+                      } @else {
+                        <span class="shared" title="Another user's public product">Shared</span>
+                      }
                     </div>
                     <ng-container
                       *ngTemplateOutlet="confirmation; context: { $implicit: product }"
@@ -493,6 +506,17 @@ type Action = 'archive' | 'delete';
     }
     li:not(:hover) .grip {
       opacity: 0.4;
+    }
+    label.public {
+      flex: none;
+      gap: 0.3rem;
+      font-size: 0.75rem;
+      color: var(--ink-2);
+    }
+    .shared {
+      flex: none;
+      font-size: 0.75rem;
+      color: var(--muted);
     }
     .move {
       flex: none;
