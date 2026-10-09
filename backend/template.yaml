@@ -39,12 +39,17 @@ Resources:
                     PT_OWNER_SUB: !Ref OwnerSub
                     PT_COGNITO_DOMAIN: !Sub ${UserPoolDomain}.auth.${AWS::Region}.amazoncognito.com
                     PT_COGNITO_CLIENT_ID: !Ref UserPoolClient
+                    PT_COGNITO_USER_POOL_ID: !Ref UserPool
                     PT_PUBLIC_URL: !Ref PublicUrl
             Policies:
                 - SSMParameterReadPolicy:
                     ParameterName: price-tracker/database-url
                 - SSMParameterReadPolicy:
                     ParameterName: price-tracker/api-token
+                - Statement:  # the owner creating accounts from the app, nothing more
+                    - Effect: Allow
+                      Action: cognito-idp:AdminCreateUser
+                      Resource: !GetAtt UserPool.Arn
             Events:
                 All:
                     Type: HttpApi
@@ -60,7 +65,8 @@ Resources:
             UsernameAttributes: [email]
             AutoVerifiedAttributes: [email]
             AdminCreateUserConfig:
-                AllowAdminCreateUserOnly: true  # invite only: each tracker costs a scrape
+                # Anyone can sign up; the app keeps them out until the owner approves
+                AllowAdminCreateUserOnly: false
             AccountRecoverySetting:
                 RecoveryMechanisms:
                     - Name: verified_email

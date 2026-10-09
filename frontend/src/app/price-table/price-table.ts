@@ -1,6 +1,6 @@
 import { Component, computed, inject } from '@angular/core';
 import { DatePipe } from '@angular/common';
-import { label, money, ProductStore } from '../products';
+import { label, money, ProductStore, staleHint } from '../products';
 
 @Component({
   selector: 'app-price-table',
@@ -38,6 +38,11 @@ import { label, money, ProductStore } from '../products';
                     >{{ row.name }}</a
                   >
                 </span>
+                @if (row.unavailableSince; as since) {
+                  <span class="sub gone" [title]="row.hint">
+                    No longer sold here since {{ since | date: 'd MMM y' }}
+                  </span>
+                }
               </th>
               @if (row.stats; as s) {
                 <td class="num">{{ money(s.now, row.currency) }}</td>
@@ -130,6 +135,9 @@ import { label, money, ProductStore } from '../products';
       font-size: 0.75rem;
       color: var(--muted);
     }
+    .sub.gone {
+      color: var(--danger);
+    }
     .key {
       flex: none;
       width: 14px;
@@ -158,6 +166,8 @@ export class PriceTable {
         url: p.url,
         name: label(p),
         currency: p.currency,
+        unavailableSince: p.unavailable_since,
+        hint: staleHint(p) ?? '',
         stats: prices.length
           ? {
               now: prices[prices.length - 1],

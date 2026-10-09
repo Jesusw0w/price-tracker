@@ -134,8 +134,8 @@ h1 {
   padding: 1.25rem 1.5rem;
   border: 1px solid var(--border);
   border-radius: 14px;
-  /* Mostly opaque, and blurred, so the background shows as colour without hurting text */
-  background: rgb(21 27 32 / 0.7);
+  /* Blurred, so the background shows as colour without hurting text; Customize sets the alpha */
+  background: rgb(21 27 32 / var(--card-alpha, 0.7));
   backdrop-filter: blur(14px) saturate(130%);
 }
 

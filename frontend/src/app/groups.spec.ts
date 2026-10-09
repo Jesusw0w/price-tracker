@@ -12,6 +12,7 @@ const product = (id: number): Product => ({
   currency: 'EUR',
   public: false,
   mine: true,
+  unavailable_since: null,
   history: [],
 });
 

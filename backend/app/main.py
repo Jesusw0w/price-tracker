@@ -2,7 +2,7 @@ from fastapi import FastAPI
 
 from app.logs import AccessLog, setup_logging
 from app.mcp.mcp import mcp
-from app.routers import auth, health, me, products
+from app.routers import auth, health, me, members, products
 
 
 def create_app() -> FastAPI:
@@ -14,6 +14,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(auth.router)
     app.include_router(me.router)
+    app.include_router(members.router)
     app.include_router(products.router)
 
     app.mount("/", mcp_app)

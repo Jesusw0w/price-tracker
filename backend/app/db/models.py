@@ -7,6 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.database import Base
 
 RefreshStatus = Literal["pending", "running", "done", "failed"]
+MemberStatus = Literal["pending", "approved", "rejected"]
 
 
 class ProductRow(Base):
@@ -25,6 +26,8 @@ class ProductRow(Base):
     currency: Mapped[str | None] = mapped_column(String(3))  # ISO 4217
     tracked: Mapped[bool] = mapped_column(default=True)
     added_at: Mapped[datetime.date] = mapped_column(default=datetime.date.today)
+    # First scrape that found the page without an offer; cleared by the next price
+    unavailable_since: Mapped[datetime.date | None]
 
     prices: Mapped[list[PriceRow]] = relationship(order_by="PriceRow.date")
 
@@ -68,3 +71,14 @@ class UserSettingsRow(Base):
 
     user_sub: Mapped[str] = mapped_column(String(64), primary_key=True)
     data: Mapped[dict[str, Any]] = mapped_column(JSON)  # validated by UserSettings
+
+
+class MemberRow(Base):
+    """A Cognito user who has signed in; only approved ones may use /api."""
+
+    __tablename__ = "members"
+
+    sub: Mapped[str] = mapped_column(String(64), primary_key=True)
+    email: Mapped[str]
+    status: Mapped[MemberStatus]
+    requested_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True))

@@ -3,7 +3,7 @@ import { form, FormField, FormRoot, required } from '@angular/forms/signals';
 import { CdkDrag, CdkDragHandle, CdkDropList, CdkDropListGroup } from '@angular/cdk/drag-drop';
 import { GroupStore, Section } from '../groups';
 import { NewGroup } from '../new-group';
-import { label, money, Product, ProductStore, SERIES_COLORS } from '../products';
+import { label, money, Product, ProductStore, SERIES_COLORS, staleHint } from '../products';
 
 type Flag = 'charted' | 'lowest' | 'dropped' | 'pending';
 type Sort = 'manual' | 'high' | 'low';
@@ -49,6 +49,7 @@ export class Sidebar {
   protected readonly groups = inject(GroupStore);
   protected readonly money = money;
   protected readonly label = label;
+  protected readonly staleHint = staleHint;
   protected readonly maxShown = SERIES_COLORS.length;
   protected readonly flagList = FLAGS;
   protected readonly sorts = SORTS;

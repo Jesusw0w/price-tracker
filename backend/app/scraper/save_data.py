@@ -14,7 +14,11 @@ def save(session: Session, scraped: list[Scraped], day: datetime.date) -> None:
             product.name = page.name
         if page.currency:
             product.currency = page.currency
-        if page.price_cents is not None:
+        if page.price_cents is None:
+            if not page.available and product.unavailable_since is None:
+                product.unavailable_since = day
+        else:
+            product.unavailable_since = None
             session.merge(
                 PriceRow(
                     product_id=page.product_id, date=day, price_cents=page.price_cents

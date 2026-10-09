@@ -2,7 +2,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { ApplicationRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Account, Settings } from './account';
-import { Product, ProductStore, RANGES, SERIES_COLORS } from './products';
+import { label, Product, ProductStore, RANGES, SERIES_COLORS } from './products';
 
 const product = (id: number, prices: [string, number][] = []): Product => ({
   id,
@@ -11,7 +11,16 @@ const product = (id: number, prices: [string, number][] = []): Product => ({
   currency: 'EUR',
   public: false,
   mine: true,
+  unavailable_since: null,
   history: prices.map(([date, price]) => ({ date, price })),
+});
+
+describe('label', () => {
+  it('labels an unscraped product by its short link, so two of one shop differ', () => {
+    const unnamed = { ...product(1), name: null, url: 'https://www.amazon.es/dp/B0G34RRG1F' };
+    expect(label(unnamed)).toBe('amazon.es/dp/B0G34RRG1F');
+    expect(label(product(1))).toBe('Product 1');
+  });
 });
 
 describe('ProductStore', () => {
@@ -34,6 +43,30 @@ describe('ProductStore', () => {
   const ten = () => Array.from({ length: 10 }, (_, i) => product(i + 1));
 
   afterEach(() => http.verify({ ignoreCancelled: true }));
+
+  it('reloads while a product waits for its first scrape', async () => {
+    const pending = { ...product(1), name: null };
+    await load([pending]);
+    vi.useFakeTimers();
+    try {
+      // Re-arm the poll under fake timers: load ran on real ones
+      store.reload();
+      TestBed.tick();
+      http.expectOne('/api/products').flush([pending]);
+      await vi.advanceTimersByTimeAsync(0);
+      TestBed.tick();
+
+      await vi.advanceTimersByTimeAsync(30_000);
+      TestBed.tick();
+      http.expectOne('/api/products').flush([product(1)]);
+      await vi.advanceTimersByTimeAsync(0);
+      TestBed.tick();
+      await vi.advanceTimersByTimeAsync(60_000);
+      http.expectNone('/api/products');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
   it('shows the first products by default', async () => {
     await load(ten());
@@ -78,6 +111,25 @@ describe('ProductStore', () => {
     patch.flush({ ...product(2), public: true });
     await sharing;
     expect(store.products().find((p) => p.id === 2)?.public).toBe(true);
+  });
+
+  it('moves a product to a new link and shows why a link is refused', async () => {
+    await load(ten());
+    const moving = store.changeLink(2, 'https://shop.example/p/new');
+    const put = http.expectOne({ method: 'PUT', url: '/api/products/2/link' });
+    expect(put.request.body).toEqual({ link: 'https://shop.example/p/new' });
+    put.flush({ ...product(2), url: 'https://shop.example/p/new' });
+    expect(await moving).toBeUndefined();
+    expect(store.products().find((p) => p.id === 2)?.url).toBe('https://shop.example/p/new');
+
+    const refused = store.changeLink(2, 'https://shop.example/p/3');
+    http
+      .expectOne('/api/products/2/link')
+      .flush(
+        { detail: 'Another of your products has this link' },
+        { status: 409, statusText: 'Conflict' },
+      );
+    expect(await refused).toBe('Another of your products has this link');
   });
 
   it('archives a product and restores it with its history', async () => {

@@ -10,6 +10,7 @@ const product = (id: number): Product => ({
   currency: 'EUR',
   public: false,
   mine: true,
+  unavailable_since: null,
   history: [],
 });
 
@@ -80,5 +81,11 @@ describe('DashboardPicker', () => {
     await click('[aria-label="Public: Product 1"]');
     const patch = http.expectOne({ method: 'PATCH', url: '/api/products/1' });
     expect(patch.request.body).toEqual({ public: true });
+  });
+
+  it('takes an unavailable product straight to Change link', async () => {
+    const { el, click } = await render([{ ...product(1), unavailable_since: '2026-10-09' }]);
+    await click('.error.text-button');
+    expect(el.querySelector<HTMLInputElement>('#relink-1')?.value).toBe(product(1).url);
   });
 });

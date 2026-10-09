@@ -8,14 +8,22 @@ export interface Settings {
   /** [product id, colour slot] pairs; null until the user picks, so defaults apply. */
   dashboard: [number, number][] | null;
   background: string | null;
+  /** Percent opacity of the dashboard's cards; null keeps the default. */
+  opacity: number | null;
 }
+
+export type MemberStatus = 'pending' | 'approved' | 'rejected';
 
 interface Me {
   email: string;
+  /** Anyone can sign up; only accounts the owner approved can use the app. */
+  status: MemberStatus;
+  owner: boolean;
   settings: Settings;
 }
 
-const EMPTY: Settings = { groups: [], dashboard: null, background: null };
+const EMPTY: Settings = { groups: [], dashboard: null, background: null, opacity: null };
+export const DEFAULT_OPACITY = 70;
 const SAVE_DELAY_MS = 500;
 
 export const isUnauthorized = (error: unknown) =>
@@ -34,6 +42,8 @@ export class Account {
 
   readonly ready = computed(() => this.me.hasValue());
   readonly email = computed(() => (this.me.hasValue() ? this.me.value().email : null));
+  readonly status = computed(() => (this.me.hasValue() ? this.me.value().status : null));
+  readonly owner = computed(() => this.me.hasValue() && this.me.value().owner);
   readonly signedOut = computed(() => isUnauthorized(this.me.error()));
   readonly loadError = computed(() => !!this.me.error() && !this.signedOut());
   readonly saveFailed = signal(false);
@@ -46,9 +56,9 @@ export class Account {
     this.saveTimer = setTimeout(() => this.save(), SAVE_DELAY_MS);
   }
 
-  /** ``reset`` starts at Cognito's password reset, which ends in a sign-in too. */
-  signIn(page: 'login' | 'reset' = 'login'): void {
-    this.location.assign(page === 'reset' ? '/api/auth/login?page=reset' : '/api/auth/login');
+  /** ``reset`` and ``signup`` open Cognito's own pages, which end in a sign-in too. */
+  signIn(page: 'login' | 'reset' | 'signup' = 'login'): void {
+    this.location.assign(page === 'login' ? '/api/auth/login' : `/api/auth/login?page=${page}`);
   }
 
   retry(): void {

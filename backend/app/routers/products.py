@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Response, status
 from pydantic import BaseModel
 
-from app.auth import UserDep
+from app.auth import MemberDep
 from app.db.database import SessionDep
 from app.links import InvalidLink
 from app.products import (
@@ -13,6 +13,7 @@ from app.products import (
     UnknownProduct,
     archive_product,
     archived_products,
+    change_link,
     delete_product,
     set_public,
     track,
@@ -31,19 +32,19 @@ class Visibility(BaseModel):
 
 
 @router.get("")
-def list_products(user: UserDep, session: SessionDep) -> list[Product]:
+def list_products(user: MemberDep, session: SessionDep) -> list[Product]:
     """List your tracked products and everyone's public ones, with price history."""
     return tracked_products(session, user.sub)
 
 
 @router.get("/archived")
-def list_archived_products(user: UserDep, session: SessionDep) -> list[Product]:
+def list_archived_products(user: MemberDep, session: SessionDep) -> list[Product]:
     """List your untracked products with their price history. POST a URL to restore."""
     return archived_products(session, user.sub)
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
-def track_product(body: NewProduct, user: UserDep, session: SessionDep) -> Product:
+def track_product(body: NewProduct, user: MemberDep, session: SessionDep) -> Product:
     """Start tracking a product, privately. If you tracked it before, history is kept.
 
     \f
@@ -61,7 +62,7 @@ def track_product(body: NewProduct, user: UserDep, session: SessionDep) -> Produ
 
 @router.patch("/{product_id}")
 def change_visibility(
-    product_id: ProductId, body: Visibility, user: UserDep, session: SessionDep
+    product_id: ProductId, body: Visibility, user: MemberDep, session: SessionDep
 ) -> Product:
     """Share one of your products with every user, or make it private again.
 
@@ -75,9 +76,30 @@ def change_visibility(
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(e)) from e
 
 
+@router.put("/{product_id}/link")
+def replace_link(
+    product_id: ProductId, body: NewProduct, user: MemberDep, session: SessionDep
+) -> Product:
+    """Move one of your products to a new listing; its price history stays.
+
+    \f
+    Raises:
+        HTTPException: 404 if you own no such product, 422 if the link is refused,
+            409 if another of your products has it.
+    """
+    try:
+        return change_link(session, user.sub, product_id, body.link)
+    except UnknownProduct as e:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(e)) from e
+    except InvalidLink as e:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(e)) from e
+    except AlreadyTracked as e:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(e)) from e
+
+
 @router.delete("/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
 def untrack_product(
-    product_id: ProductId, user: UserDep, session: SessionDep, permanent: bool = False
+    product_id: ProductId, user: MemberDep, session: SessionDep, permanent: bool = False
 ) -> Response:
     """Archive one of your products: stop tracking it and keep its price history.
 

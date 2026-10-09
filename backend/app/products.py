@@ -42,6 +42,7 @@ class Product(BaseModel):
     currency: str | None = None
     public: bool = False
     mine: bool = True  # only the owner may archive, delete or share it
+    unavailable_since: datetime.date | None = None
     history: list[PricePoint]  # oldest first
 
 
@@ -52,6 +53,7 @@ class ProductSummary(BaseModel):
     currency: str | None = None
     price: float | None = None
     price_date: datetime.date | None = None
+    unavailable_since: datetime.date | None = None
 
 
 class PriceSummary(BaseModel):
@@ -91,6 +93,7 @@ def to_product(row: ProductRow, user: str) -> Product:
         currency=row.currency,
         public=row.public,
         mine=row.owner_id == user,
+        unavailable_since=row.unavailable_since,
         history=[
             PricePoint(date=p.date, price=p.price_cents / 100) for p in row.prices
         ],
@@ -157,6 +160,7 @@ def summarize(product: Product) -> ProductSummary:
         currency=product.currency,
         price=latest_record.price if latest_record else None,
         price_date=latest_record.date if latest_record else None,
+        unavailable_since=product.unavailable_since,
     )
 
 
@@ -183,6 +187,30 @@ def set_public(session: Session, user: str, product_id: int, public: bool) -> Pr
     """
     row = product_row(session, user, product_id, owned=True)
     row.public = public
+    session.commit()
+    return to_product(row, user)
+
+
+def change_link(session: Session, user: str, product_id: int, link: str) -> Product:
+    """Point the user's product at a new listing, keeping its price history.
+
+    For a listing that was replaced, e.g. a new Amazon ASIN for the same item. The
+    new page is queued for a refresh.
+
+    Raises:
+        UnknownProduct: The user owns no product with this id.
+        InvalidLink: The link is not an https link to a public website.
+        AlreadyTracked: Another of the user's products has this link.
+    """
+    row = product_row(session, user, product_id, owned=True)
+    url = canonical_url(link)
+    if url != row.url and session.scalar(
+        select(ProductRow.id).where(ProductRow.owner_id == user, ProductRow.url == url)
+    ):
+        raise AlreadyTracked("Another of your products has this link")
+    row.url, row.domain = url, site(url)
+    row.unavailable_since = None
+    _mark_pending(session, product_id, datetime.datetime.now(datetime.UTC))
     session.commit()
     return to_product(row, user)
 
@@ -315,6 +343,17 @@ def refresh_status(
     return infos
 
 
+def _mark_pending(session: Session, product_id: int, now: datetime.datetime) -> None:
+    refresh = session.get(RefreshRow, product_id)
+    if refresh is None:
+        refresh = RefreshRow(product_id=product_id)
+        session.add(refresh)
+    refresh.status = "pending"
+    refresh.requested_at = now
+    refresh.finished_at = None
+    refresh.error = None
+
+
 def queue_refresh(
     session: Session, user: str, product_ids: list[int]
 ) -> list[RefreshInfo]:
@@ -336,17 +375,11 @@ def queue_refresh(
     refreshes = _refreshes(session, unique)
     for product_id in unique:
         refresh = refreshes.get(product_id)
-        if refresh is None:
-            refresh = RefreshRow(product_id=product_id)
-            session.add(refresh)
-        elif (
+        if refresh is not None and (
             refresh.status in ("pending", "running")
             or now - _as_utc(refresh.requested_at) < cooldown
         ):
             continue
-        refresh.status = "pending"
-        refresh.requested_at = now
-        refresh.finished_at = None
-        refresh.error = None
+        _mark_pending(session, product_id, now)
     session.commit()
     return refresh_status(session, user, unique)

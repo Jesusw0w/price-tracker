@@ -39,6 +39,22 @@ body {
   outline-offset: 2px;
 }
 
+input[type='range'] {
+  accent-color: var(--ink);
+}
+
+input.field {
+  box-sizing: border-box;
+  width: 100%;
+  margin-bottom: 0.6rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgb(13 18 21 / 0.55);
+  color: var(--ink);
+  font: inherit;
+}
+
 /* Square ticks used in lists: filled with the product's chart colour (--key) when ticked */
 input[type='checkbox'].tick {
   flex: none;

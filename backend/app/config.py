@@ -18,10 +18,13 @@ class Settings(BaseSettings):
     owner_sub: str = ""  # Cognito sub that /mcp acts as; empty turns /mcp off
     cognito_domain: str  # e.g. <prefix>.auth.eu-west-1.amazoncognito.com
     cognito_client_id: str
+    cognito_user_pool_id: str = ""  # lets the owner create accounts; empty turns it off
     public_url: str
     session_days: int = 14
     refresh_cooldown_minutes: int = 30
     max_trackers: int = 100  # per user
+    scrape_hour_utc: int = Field(default=6, ge=0, le=23)  # daily run starts after it
+    scrape_workers: int = Field(default=4, ge=1)  # sites scraped at once
 
 
 def _load_settings() -> Settings:

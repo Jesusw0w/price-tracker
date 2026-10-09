@@ -1,5 +1,5 @@
 import { HttpClient, HttpErrorResponse, httpResource } from '@angular/common/http';
-import { computed, inject, linkedSignal, Service, signal, untracked } from '@angular/core';
+import { computed, effect, inject, linkedSignal, Service, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Account } from './account';
 
@@ -17,6 +17,8 @@ export interface Product {
   public: boolean;
   /** Only the owner may archive, delete or share it; the rest are others' public ones. */
   mine: boolean;
+  /** First scrape that found the listing without an offer; null while it sells. */
+  unavailable_since: string | null;
   history: PricePoint[];
 }
 
@@ -63,8 +65,39 @@ export function money(value: number, currency: string | null): string {
   return format.format(value);
 }
 
-/** Before the first scrape there is no name, so the shop's host stands in. */
-export const label = (p: Product) => p.name ?? new URL(p.url).hostname;
+/** Before the first scrape there is no name, so the short link stands in. */
+export const label = (p: Product) => {
+  if (p.name) return p.name;
+  const url = new URL(p.url);
+  // The path is what tells two products of one shop apart, e.g. amazon.es/dp/B0G34RRG1F
+  return `${url.hostname.replace(/^www\./, '')}${url.pathname}`.replace(/\/$/, '');
+};
+
+// The home scraper polls its queue every minute, so a new product fills in soon after
+const PENDING_POLL_MS = 30_000;
+const PENDING_POLLS = 10;
+
+/** The API's own explanation when it gave one, e.g. a refused link. */
+const dayFormat = new Intl.DateTimeFormat(undefined, {
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+});
+
+/** What to do about a product whose listing stopped selling; null while it sells. */
+export function staleHint(p: Product): string | null {
+  if (!p.unavailable_since) return null;
+  const since = dayFormat.format(new Date(`${p.unavailable_since}T00:00:00`));
+  return p.mine
+    ? `No longer sold at this link since ${since}. Open Customize and use Change link to ` +
+        'point it at the new listing; the price history is kept.'
+    : `No longer sold at this link since ${since}. Only its owner can update the link.`;
+}
+
+export function userMessage(error: unknown, fallback: string): string {
+  const detail = error instanceof HttpErrorResponse ? error.error?.detail : undefined;
+  return typeof detail === 'string' ? detail : fallback;
+}
 
 interface SlotSource {
   products: Product[];
@@ -78,6 +111,19 @@ export class ProductStore {
   private readonly list = httpResource<Product[]>(() => '/api/products', { defaultValue: [] });
 
   readonly products = computed(() => (this.list.hasValue() ? this.list.value() : []));
+
+  // Reloads while a product waits for its first scrape; gives up on one that never
+  // scrapes (a blocked site), so an open tab doesn't poll forever
+  private pendingPolls = 0;
+  private readonly pollPending = effect((onCleanup) => {
+    const waiting = this.products().some((p) => p.name === null && !p.history.length);
+    if (!waiting || this.pendingPolls >= PENDING_POLLS) return;
+    const timer = setTimeout(() => {
+      this.pendingPolls++;
+      this.list.reload();
+    }, PENDING_POLL_MS);
+    onCleanup(() => clearTimeout(timer));
+  });
   readonly loadError = computed(() => this.list.error());
   readonly range = signal<Range>(RANGES[RANGES.length - 1]);
 
@@ -164,11 +210,24 @@ export class ProductStore {
     try {
       const product = await firstValueFrom(this.http.post<Product>('/api/products', { link }));
       this.list.value.update((products) => [...products, product]);
+      this.pendingPolls = 0;
       if (!this.chartFull()) this.toggle(product.id);
       return undefined;
     } catch (e) {
-      const detail = e instanceof HttpErrorResponse ? e.error?.detail : undefined;
-      return typeof detail === 'string' ? detail : 'Could not add the product, try again';
+      return userMessage(e, 'Could not add the product, try again');
+    }
+  }
+
+  /** Moves the product to a new listing and keeps its history. Same result as add. */
+  async changeLink(id: number, link: string): Promise<string | undefined> {
+    try {
+      const product = await firstValueFrom(
+        this.http.put<Product>(`/api/products/${id}/link`, { link }),
+      );
+      this.list.value.update((products) => products.map((p) => (p.id === id ? product : p)));
+      return undefined;
+    } catch (e) {
+      return userMessage(e, 'Could not change the link, try again');
     }
   }
 

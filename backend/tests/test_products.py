@@ -41,6 +41,35 @@ def test_tracked_and_archived_products_split_on_tracked_oldest_added_first(
     assert [p.id for p in products.archived_products(session, USER)] == [4]
 
 
+def test_change_link_keeps_history_and_queues_the_new_page(session: Session) -> None:
+    session.add(row(ID, unavailable_since=DAY))
+    session.add(PriceRow(product_id=ID, date=DAY, price_cents=100))
+    session.add(RefreshRow(product_id=ID, status="failed", requested_at=LONG_AGO))
+    session.commit()
+
+    moved = products.change_link(
+        session, USER, ID, "https://www.amazon.es/gp/product/B0NEWASIN1?th=1"
+    )
+
+    assert moved.url == "https://www.amazon.es/dp/B0NEWASIN1"
+    assert (moved.unavailable_since, len(moved.history)) == (None, 1)
+    assert session.get_one(ProductRow, ID).domain == "amazon.es"
+    assert session.get_one(RefreshRow, ID).status == "pending"
+
+
+def test_change_link_is_for_the_owner_and_refuses_a_duplicate(
+    session: Session,
+) -> None:
+    session.add_all([row(ID), row(OTHER), row(3, owner=SOMEONE, public=True)])
+    session.commit()
+    with pytest.raises(products.AlreadyTracked):
+        products.change_link(session, USER, ID, "https://shop.example/p/2")
+    with pytest.raises(products.UnknownProduct):
+        products.change_link(session, USER, 3, "https://shop.example/p/9")
+    with pytest.raises(InvalidLink):
+        products.change_link(session, USER, ID, "http://shop.example/p/9")
+
+
 def test_history_is_oldest_first(session: Session) -> None:
     session.add(row(ID, currency="EUR"))
     session.add_all(

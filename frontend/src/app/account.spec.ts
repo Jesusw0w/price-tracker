@@ -66,6 +66,8 @@ describe('Account', () => {
     const { account } = await load();
     account.signIn('reset');
     expect(assign).toHaveBeenCalledWith('/api/auth/login?page=reset');
+    account.signIn('signup');
+    expect(assign).toHaveBeenCalledWith('/api/auth/login?page=signup');
   });
 
   it('saves pending changes before signing out of the app and of Cognito', async () => {

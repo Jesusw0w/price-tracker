@@ -7,7 +7,8 @@ uv sync --extra dev
 cp .env.example .env                  # set the database, token and Cognito values, or export them
 uv run alembic upgrade head           # create or update the schema
 uv run fastapi dev                    # API on http://localhost:8000, docs at /docs
-uv run python -m app.scraper.run      # scrape tracked products, save today's prices
+uv run python -m app.scraper.run      # scraper: works the refresh queue, daily run (see below)
+uv run python -m app.scraper.run --once   # today's run now, then exit
 uv run nox                            # ruff check + format --check, mypy --strict, pytest
 uv run nox -s format                  # apply ruff fixes and formatting
 uv run nox -s deploy                  # checks, then build and deploy the Lambda (AWS)
@@ -21,7 +22,14 @@ review the generated file in `migrations/versions/`, then `alembic upgrade head`
 
 ## Authentication
 
-Users sign in with a Cognito user pool, created by the stack. Accounts are invite only.
+Users sign in with a Cognito user pool, created by the stack. Anyone can create an account
+on Cognito's sign-up page, but only accounts the owner approves can use the app.
+
+- **Approval:** a first sign-in adds the user to `members` as `pending` (the owner,
+  `PT_OWNER_SUB`, is approved straight away). Pending and declined users see a waiting
+  screen, and every data route answers 403 for them. The owner sees an **Access requests**
+  button with the number waiting, and approves, declines or removes people there
+  (`/api/members`). The check runs on every request, so removing someone takes effect at once.
 
 - **UI and `/api`:** `/api/auth/login` sends the browser to Cognito's hosted sign-in page.
   Cognito redirects to `/api/auth/callback`, and the backend exchanges the code (with PKCE)
@@ -41,10 +49,15 @@ claude mcp add --transport http price-tracker <url>/mcp --header "Authorization:
 
 ### Managing users
 
-Get the pool id from `sam list stack-outputs` (`UserPoolId`).
+Approving, declining, removing access and creating accounts happen in the app. **Invite**
+in the Access requests dialog creates the Cognito account (Cognito emails a temporary
+password) and approves it, so the first sign-in goes straight to the dashboard. It needs
+`PT_COGNITO_USER_POOL_ID`, which the stack sets; locally it answers 503. The CLI is for the
+rest; get the pool id from `sam list stack-outputs` (`UserPoolId`).
 
 ```bash
-# Invite: Cognito emails a temporary password, and the first sign-in sets a new one
+# Invite instead of waiting for a sign-up: Cognito emails a temporary password. The
+# account still needs your approval in the app after its first sign-in
 aws cognito-idp admin-create-user --user-pool-id <pool> --username friend@example.com \
   --user-attributes Name=email,Value=friend@example.com Name=email_verified,Value=true
 # A user's sub, e.g. for PT_OWNER_SUB or the migration below
@@ -53,11 +66,11 @@ aws cognito-idp admin-get-user --user-pool-id <pool> --username you@example.com 
 aws cognito-idp admin-disable-user --user-pool-id <pool> --username friend@example.com
 ```
 
-Disabling a user stops new sign-ins. Sessions that are already open last until they expire,
-so to lock someone out right away, also delete their sessions:
-`DELETE FROM sessions WHERE user_sub = '<sub>';`
+**Remove access** in the app locks someone out at once. Disabling them in Cognito also stops
+new sign-ins.
 
-Cognito's built-in email sender allows about 50 emails a day, which is plenty for invites.
+Cognito's built-in email sender allows about 50 emails a day, sign-up codes included. Bots
+can create accounts, but a pending account can't track products, so it costs no scrapes.
 
 ## Deploy to AWS (optional)
 

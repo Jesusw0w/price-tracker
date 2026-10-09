@@ -2,7 +2,7 @@
   <div class="backdrop" [style.background-image]="image" aria-hidden="true"></div>
 }
 
-@if (signedOut()) {
+@if (signedOut() || (account.ready() && account.status() !== 'approved')) {
   <div class="gate">
     <app-login />
   </div>
@@ -76,6 +76,9 @@
               <path d="M11 3H9" />
             </svg>
           </button>
+        }
+        @if (account.owner()) {
+          <app-members />
         }
         <app-dashboard-picker />
         @if (account.email(); as email) {

@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db.database import SessionDep
-from app.db.models import SessionRow
+from app.db.models import MemberRow, MemberStatus, SessionRow
 
 # __Host- makes browsers refuse the cookie unless Secure, Path=/ and host-only
 SESSION_COOKIE = "__Host-session"
@@ -30,11 +30,12 @@ LOGIN_COOKIE = "__Host-login"
 LOGIN_MINUTES = 10
 TOKEN_TIMEOUT_S = 10
 
-LoginPage = Literal["login", "reset"]
+LoginPage = Literal["login", "reset", "signup"]
 # Cognito's hosted pages that end in a sign-in; all take /oauth2/authorize's parameters
 _LOGIN_PATHS: dict[LoginPage, str] = {
     "login": "oauth2/authorize",
     "reset": "forgotPassword",
+    "signup": "signup",
 }
 
 
@@ -46,6 +47,11 @@ class LoginFailed(Exception):
 class User:
     sub: str
     email: str
+    status: MemberStatus
+
+    @property
+    def owner(self) -> bool:
+        return bool(settings.owner_sub) and self.sub == settings.owner_sub
 
 
 def _hash(session_id: str) -> str:
@@ -138,16 +144,24 @@ def finish_login(
     claims = _id_claims(code, verifier)
 
     now = datetime.datetime.now(datetime.UTC)
+    sub, email = claims["sub"], claims.get("email", "")
     session.execute(delete(SessionRow).where(SessionRow.expires_at < now))
     session_id = secrets.token_urlsafe(32)
     session.add(
         SessionRow(
             id=_hash(session_id),
-            user_sub=claims["sub"],
-            email=claims.get("email", ""),
+            user_sub=sub,
+            email=email,
             expires_at=now + datetime.timedelta(days=settings.session_days),
         )
     )
+    # Self sign-up is open, so a first sign-in is a request the owner approves
+    member = session.get(MemberRow, sub)
+    if member is None:
+        first: MemberStatus = "approved" if sub == settings.owner_sub else "pending"
+        session.add(MemberRow(sub=sub, email=email, status=first, requested_at=now))
+    else:
+        member.email = email
     session.commit()
     return session_id
 
@@ -204,10 +218,47 @@ def require_user(session: SessionDep, session_id: SessionCookie = None) -> User:
         )
     if row is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not signed in")
-    return User(sub=row.user_sub, email=row.email)
+    member = session.get(MemberRow, row.user_sub)
+    # The owner's sessions may predate the members table
+    state: MemberStatus
+    if member is not None:
+        state = member.status
+    else:
+        state = "approved" if row.user_sub == settings.owner_sub else "pending"
+    return User(sub=row.user_sub, email=row.email, status=state)
 
 
 UserDep = Annotated[User, Depends(require_user)]
+
+
+def require_member(user: UserDep) -> User:
+    """FastAPI dependency for routes that read or change data.
+
+    Checked on every request, so declining someone locks them out at once.
+
+    Raises:
+        HTTPException: 403 until the owner approves the account.
+    """
+    if user.status != "approved":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Waiting for approval")
+    return user
+
+
+MemberDep = Annotated[User, Depends(require_member)]
+
+
+def require_owner(user: MemberDep) -> User:
+    """FastAPI dependency for managing members.
+
+    Raises:
+        HTTPException: 403 for anyone but ``settings.owner_sub``.
+    """
+    if not user.owner:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the owner can do this")
+    return user
+
+
+OwnerDep = Annotated[User, Depends(require_owner)]
 
 
 class OwnerTokenVerifier(TokenVerifier):

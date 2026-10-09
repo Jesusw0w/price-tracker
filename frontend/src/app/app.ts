@@ -10,21 +10,25 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { Account, isUnauthorized } from './account';
+import { Account, DEFAULT_OPACITY, isUnauthorized } from './account';
 import { Background } from './background';
 import { DashboardPicker } from './dashboard-picker/dashboard-picker';
 import { Login } from './login/login';
+import { Members } from './members/members';
 import { PriceChart, Series } from './price-chart/price-chart';
 import { PriceTable } from './price-table/price-table';
 import { label, ProductStore, RANGES, SERIES_COLORS } from './products';
 import { Sidebar } from './sidebar/sidebar';
 
 @Component({
-  imports: [Sidebar, DashboardPicker, Login, PriceChart, PriceTable],
+  imports: [Sidebar, DashboardPicker, Login, Members, PriceChart, PriceTable],
   selector: 'app-root',
   templateUrl: './app.html',
   styleUrl: './app.css',
-  host: { '(document:keydown.escape)': 'closePanel()' },
+  host: {
+    '(document:keydown.escape)': 'closePanel()',
+    '[style.--card-alpha]': 'cardAlpha()',
+  },
 })
 export class App {
   protected readonly store = inject(ProductStore);
@@ -62,6 +66,10 @@ export class App {
     // The dashboard is inert until the next render, so focus can only move back after it
     afterNextRender(() => this.panelToggle()?.nativeElement.focus(), { injector: this.injector });
   }
+
+  protected readonly cardAlpha = computed(
+    () => (this.account.settings().opacity ?? DEFAULT_OPACITY) / 100,
+  );
 
   // A session can also expire after the page loaded
   protected readonly signedOut = computed(

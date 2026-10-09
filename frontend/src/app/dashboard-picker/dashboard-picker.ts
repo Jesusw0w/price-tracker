@@ -3,9 +3,10 @@ import { NgTemplateOutlet } from '@angular/common';
 import { Component, inject, signal } from '@angular/core';
 import { GroupStore } from '../groups';
 import { NewGroup } from '../new-group';
-import { label, Product, ProductStore, SERIES_COLORS } from '../products';
+import { OpacitySlider } from '../opacity-slider';
+import { label, Product, ProductStore, SERIES_COLORS, staleHint } from '../products';
 
-type Action = 'archive' | 'delete';
+type Action = 'archive' | 'delete' | 'relink';
 
 /**
  * Dialog for managing products: which active ones the dashboard shows, groups, archiving,
@@ -13,7 +14,15 @@ type Action = 'archive' | 'delete';
  */
 @Component({
   selector: 'app-dashboard-picker',
-  imports: [NgTemplateOutlet, CdkDropListGroup, CdkDropList, CdkDrag, CdkDragHandle, NewGroup],
+  imports: [
+    NgTemplateOutlet,
+    CdkDropListGroup,
+    CdkDropList,
+    CdkDrag,
+    CdkDragHandle,
+    NewGroup,
+    OpacitySlider,
+  ],
   template: `
     <button type="button" class="open" aria-haspopup="dialog" (click)="open(dialog)">
       Customize
@@ -25,6 +34,8 @@ type Action = 'archive' | 'delete';
           <h2 id="picker-heading">Products</h2>
           <span class="count">{{ store.slots().size }}/{{ maxShown }} on the dashboard</span>
         </header>
+
+        <app-opacity-slider />
 
         <section aria-labelledby="active-heading">
           <h3 id="active-heading">
@@ -109,6 +120,20 @@ type Action = 'archive' | 'delete';
                         />
                         <span class="name" [title]="name">{{ name }}</span>
                       </label>
+                      @if (staleHint(product); as hint) {
+                        @if (product.mine) {
+                          <button
+                            type="button"
+                            class="text-button help error"
+                            [title]="hint"
+                            (click)="ask(product, 'relink')"
+                          >
+                            Needs new link
+                          </button>
+                        } @else {
+                          <span class="shared" [title]="hint">Unavailable</span>
+                        }
+                      }
                       @if (groups.groups().length) {
                         <select
                           #moveTo
@@ -135,6 +160,21 @@ type Action = 'archive' | 'delete';
                           />
                           Public
                         </label>
+                        <button
+                          type="button"
+                          class="icon"
+                          (click)="ask(product, 'relink')"
+                          [attr.aria-label]="'Change link of ' + name"
+                          title="Change link, keeping the price history"
+                        >
+                          <!-- Lucide link, ISC licence -->
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                            <path
+                              d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"
+                            />
+                          </svg>
+                        </button>
                         <button
                           type="button"
                           class="icon"
@@ -239,7 +279,33 @@ type Action = 'archive' | 'delete';
 
     <ng-template #confirmation let-product>
       @let ask = pending();
-      @if (ask && ask.product.id === product.id) {
+      @if (ask && ask.product.id === product.id && ask.action === 'relink') {
+        <form class="confirm" (submit)="relink($event, product, newLink.value)">
+          <p>
+            <label [for]="'relink-' + product.id">
+              New link for <strong>{{ label(product) }}</strong
+              >, e.g. its new listing. The price history stays.
+            </label>
+          </p>
+          <input
+            #newLink
+            [id]="'relink-' + product.id"
+            class="field"
+            type="url"
+            required
+            autocomplete="off"
+            placeholder="https:// product link"
+            [value]="product.url"
+          />
+          @if (relinkError(); as message) {
+            <p class="help error" role="alert">{{ message }}</p>
+          }
+          <div class="actions">
+            <button type="button" class="text-button" (click)="pending.set(null)">Cancel</button>
+            <button type="submit" class="primary">Change link</button>
+          </div>
+        </form>
+      } @else if (ask && ask.product.id === product.id) {
         @let name = label(product);
         <div class="confirm" [class.danger]="ask.action === 'delete'" role="alert">
           @if (ask.action === 'archive') {
@@ -563,11 +629,12 @@ export class DashboardPicker {
   protected readonly store = inject(ProductStore);
   protected readonly groups = inject(GroupStore);
   protected readonly label = label;
+  protected readonly staleHint = staleHint;
   protected readonly maxShown = SERIES_COLORS.length;
 
   protected readonly pending = signal<{ product: Product; action: Action } | null>(null);
   protected readonly restoreError = signal<string | undefined>(undefined);
-
+  protected readonly relinkError = signal<string | undefined>(undefined);
   protected open(dialog: HTMLDialogElement): void {
     this.store.showArchived.set(true);
     dialog.showModal();
@@ -581,6 +648,7 @@ export class DashboardPicker {
 
   protected ask(product: Product, action: Action): void {
     this.restoreError.set(undefined);
+    this.relinkError.set(undefined);
     this.pending.set({ product, action });
   }
 
@@ -600,6 +668,13 @@ export class DashboardPicker {
     if (name) this.groups.rename(id, name);
     // An empty name would leave the group unlabelled, so put the old one back
     else input.value = this.groups.groups().find((g) => g.id === id)?.name ?? '';
+  }
+
+  protected async relink(event: SubmitEvent, product: Product, link: string): Promise<void> {
+    event.preventDefault();
+    const message = await this.store.changeLink(product.id, link.trim());
+    this.relinkError.set(message);
+    if (!message) this.pending.set(null);
   }
 
   protected async restore(product: Product): Promise<void> {

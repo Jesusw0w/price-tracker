@@ -117,7 +117,8 @@
             @let color = store.color(product.id);
             @let last = product.history.at(-1);
             @let name = label(product);
-            <li cdkDrag [cdkDragData]="product.id" [class.shown]="color">
+            @let hint = staleHint(product);
+            <li cdkDrag [cdkDragData]="product.id" [class.shown]="color" [class.stale]="hint">
               <label>
                 <input
                   type="checkbox"
@@ -127,16 +128,18 @@
                   [disabled]="!color && store.chartFull()"
                   (change)="store.toggle(product.id)"
                 />
-                <span class="name" [title]="name">{{ name }}</span>
+                <span class="name" [title]="hint ? name + ' — ' + hint : name">{{ name }}</span>
               </label>
               <span class="leader" aria-hidden="true"></span>
               <span
                 class="price"
-                [class.low]="atLowest(product)"
-                [class.pending]="!last"
-                [title]="atLowest(product) ? 'At its lowest price' : ''"
+                [class.low]="atLowest(product) && !product.unavailable_since"
+                [class.pending]="!last || product.unavailable_since"
+                [title]="hint ?? (atLowest(product) ? 'At its lowest price' : '')"
               >
-                @if (last) {
+                @if (hint) {
+                  {{ product.mine ? 'update link' : 'unavailable' }}
+                } @else if (last) {
                   @if (atLowest(product)) {
                     <span aria-hidden="true">✓ </span>
                   }

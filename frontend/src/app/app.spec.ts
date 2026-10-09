@@ -4,6 +4,8 @@ import { App } from './app';
 
 const ME = {
   email: 'ana@example.com',
+  status: 'approved',
+  owner: false,
   settings: { groups: [], dashboard: null, background: null },
 };
 
@@ -25,6 +27,7 @@ describe('App', () => {
         currency: 'EUR',
         public: false,
         mine: true,
+        unavailable_since: null,
         history: [
           { date: '2023-06-01', price: 1000 },
           { date: '2023-06-02', price: 950 },
@@ -76,5 +79,73 @@ describe('App', () => {
     TestBed.tick();
     http.expectOne('/api/me');
     http.expectOne('/api/products');
+  });
+
+  it('keeps a new account on the waiting screen until the owner approves it', async () => {
+    TestBed.configureTestingModule({ imports: [App], providers: [provideHttpClientTesting()] });
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne('/backgrounds/index.json').flush([]);
+    http.expectOne('/api/me').flush({ ...ME, status: 'pending' });
+    http
+      .expectOne('/api/products')
+      .flush({ detail: 'Waiting for approval' }, { status: 403, statusText: 'Forbidden' });
+    await fixture.whenStable();
+
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('app-login h1')?.textContent).toContain('Almost in');
+    expect(el.querySelector('app-sidebar')).toBeNull();
+    expect(el.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it('shows the owner the access requests', async () => {
+    TestBed.configureTestingModule({ imports: [App], providers: [provideHttpClientTesting()] });
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne('/backgrounds/index.json').flush([]);
+    http.expectOne('/api/me').flush({ ...ME, owner: true });
+    http.expectOne('/api/products').flush([]);
+    // The members dialog renders, and so asks for the list, once /api/me has resolved
+    const members = await vi.waitFor(() => {
+      TestBed.tick();
+      return http.expectOne('/api/members');
+    });
+    members.flush([
+      {
+        sub: 'b',
+        email: 'bob@example.com',
+        status: 'pending',
+        requested_at: '2026-10-09T10:00:00Z',
+      },
+    ]);
+    await fixture.whenStable();
+
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('app-members .badge')?.textContent).toBe('1');
+  });
+
+  it('sets the cards from the saved opacity and the Customize slider', async () => {
+    TestBed.configureTestingModule({ imports: [App], providers: [provideHttpClientTesting()] });
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne('/backgrounds/index.json').flush([]);
+    http.expectOne('/api/me').flush({ ...ME, settings: { ...ME.settings, opacity: 40 } });
+    http.expectOne('/api/products').flush([]);
+    await fixture.whenStable();
+
+    const host = fixture.nativeElement as HTMLElement;
+    expect(host.style.getPropertyValue('--card-alpha')).toBe('0.4');
+
+    const slider = host.querySelector<HTMLInputElement>('app-opacity-slider input')!;
+    slider.value = '85';
+    slider.dispatchEvent(new Event('input'));
+    TestBed.tick();
+    expect(host.style.getPropertyValue('--card-alpha')).toBe('0.85');
   });
 });

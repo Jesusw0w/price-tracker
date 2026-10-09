@@ -13,8 +13,9 @@ from sqlalchemy.orm import Session
 from app import auth, products
 from app.config import settings
 from app.db.database import get_session
-from app.db.models import PriceRow, ProductRow, SessionRow
+from app.db.models import MemberRow, MemberStatus, PriceRow, ProductRow, SessionRow
 from app.main import create_app
+from app.routers import members
 
 TRACKED: Final[int] = 1
 DAY: Final[datetime.date] = datetime.date(2023, 2, 11)
@@ -33,7 +34,17 @@ TOOLS_LIST: Final[dict[str, object]] = {
 }
 
 
-def sign_in(session: Session, sub: str, session_id: str, days: int = 1) -> None:
+def sign_in(
+    session: Session,
+    sub: str,
+    session_id: str,
+    days: int = 1,
+    status: MemberStatus = "approved",
+) -> None:
+    now = datetime.datetime.now(datetime.UTC)
+    session.merge(
+        MemberRow(sub=sub, email=f"{sub}@example.com", status=status, requested_at=now)
+    )
     session.add(
         SessionRow(
             id=auth._hash(session_id),
@@ -104,6 +115,7 @@ def test_track_and_untrack(client: TestClient) -> None:
         "currency": None,
         "public": False,
         "mine": True,
+        "unavailable_since": None,
         "history": [],
     }
     assert client.post("/api/products", json={"link": link}).status_code == 409
@@ -165,18 +177,27 @@ def test_settings_are_saved_per_user_and_validated(client: TestClient) -> None:
     me = client.get("/api/me").json()
     assert me == {
         "email": f"{USER}@example.com",
-        "settings": {"groups": [], "dashboard": None, "background": None},
+        "status": "approved",
+        "owner": False,
+        "settings": {
+            "groups": [],
+            "dashboard": None,
+            "background": None,
+            "opacity": None,
+        },
     }
     saved = {
         "groups": [{"id": "g1", "name": "GPUs", "productIds": [1], "collapsed": True}],
         "dashboard": [[1, 0]],
         "background": "anime.webp",
+        "opacity": 45,
     }
     assert client.put("/api/me/settings", json=saved).status_code == 204
     assert client.get("/api/me").json()["settings"] == saved
 
     too_long = {"groups": [{"id": "g1", "name": "x" * 41, "productIds": []}]}
     assert client.put("/api/me/settings", json=too_long).status_code == 422
+    assert client.put("/api/me/settings", json={"opacity": 5}).status_code == 422
 
 
 @pytest.mark.parametrize("cookie", [None, "unknown-session"])
@@ -194,6 +215,74 @@ def test_expired_session_is_refused(anonymous: TestClient, session: Session) -> 
     sign_in(session, USER, "old", days=-1)
     anonymous.cookies.set(auth.SESSION_COOKIE, "old")
     assert anonymous.get("/api/me").status_code == 401
+
+
+def test_a_new_account_waits_for_the_owners_approval(
+    anonymous: TestClient, session: Session
+) -> None:
+    sign_in(session, "dan-sub", "dan-session", status="pending")
+    anonymous.cookies.set(auth.SESSION_COOKIE, "dan-session")
+    assert anonymous.get("/api/me").json()["status"] == "pending"
+    assert anonymous.get("/api/products").status_code == 403
+    assert anonymous.put("/api/me/settings", json={}).status_code == 403
+    assert anonymous.get("/api/members").status_code == 403
+
+    sign_in(session, settings.owner_sub, "owner-session")
+    owner = TestClient(anonymous.app, base_url=BASE_URL)
+    owner.cookies.set(auth.SESSION_COOKIE, "owner-session")
+    assert owner.get("/api/me").json()["owner"] is True
+    [request] = owner.get("/api/members").json()
+    assert (request["email"], request["status"]) == ("dan-sub@example.com", "pending")
+
+    approve = owner.patch("/api/members/dan-sub", json={"status": "approved"})
+    assert approve.json()["status"] == "approved"
+    assert anonymous.get("/api/products").status_code == 200
+
+    owner.patch("/api/members/dan-sub", json={"status": "rejected"})
+    assert anonymous.get("/api/products").status_code == 403
+    mine = f"/api/members/{settings.owner_sub}"
+    assert owner.patch(mine, json={"status": "rejected"}).status_code == 404
+
+
+def test_the_owner_creates_an_account_that_is_already_approved(
+    anonymous: TestClient, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sign_in(session, settings.owner_sub, "owner-session")
+    anonymous.cookies.set(auth.SESSION_COOKIE, "owner-session")
+    taken = {"eve@example.com"}
+
+    def create(email: str) -> str:
+        if email in taken:
+            raise members.AccountExists
+        return f"{email}-sub"
+
+    monkeypatch.setattr(members, "create_cognito_user", create)
+    monkeypatch.setattr(settings, "cognito_user_pool_id", "")
+    invite = {"email": "fay@example.com"}
+    assert anonymous.post("/api/members", json=invite).status_code == 503
+
+    monkeypatch.setattr(settings, "cognito_user_pool_id", "eu-west-1_pool")
+    created = anonymous.post("/api/members", json=invite)
+    assert created.status_code == 201
+    assert (created.json()["sub"], created.json()["status"]) == (
+        "fay@example.com-sub",
+        "approved",
+    )
+    assert session.get_one(MemberRow, "fay@example.com-sub").status == "approved"
+    taken_email = {"email": "eve@example.com"}
+    assert anonymous.post("/api/members", json=taken_email).status_code == 409
+    not_email = {"email": "nope"}
+    assert anonymous.post("/api/members", json=not_email).status_code == 422
+
+
+def test_the_owner_is_approved_on_first_sign_in(
+    anonymous: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    claims = {"sub": settings.owner_sub, "email": "me@example.com"}
+    fake_token_endpoint(monkeypatch, {**claims, "aud": settings.cognito_client_id})
+    state = start_login(anonymous)
+    anonymous.get("/api/auth/callback", params={"code": "c", "state": state})
+    assert anonymous.get("/api/products").status_code == 200
 
 
 def test_owner_token_does_not_open_the_api(anonymous: TestClient) -> None:
@@ -250,21 +339,25 @@ def test_login_opens_a_session_and_logout_ends_it(
     assert (back.status_code, back.headers["location"]) == (302, "/")
     [call] = calls
     assert (call["code"], len(call["code_verifier"])) == ("the-code", 86)
-    assert anonymous.get("/api/me").json()["email"] == "carol@example.com"
+    me = anonymous.get("/api/me").json()
+    assert (me["email"], me["status"]) == ("carol@example.com", "pending")
 
     out = anonymous.post("/api/auth/logout")
     assert out.json()["logout_url"].startswith(f"https://{settings.cognito_domain}/")
     assert anonymous.get("/api/me").status_code == 401
 
 
-def test_password_reset_starts_a_login_on_cognitos_reset_page(
-    anonymous: TestClient,
+@pytest.mark.parametrize(
+    ("page", "path"), [("reset", "/forgotPassword"), ("signup", "/signup")]
+)
+def test_reset_and_signup_start_a_login_on_cognitos_own_pages(
+    anonymous: TestClient, page: str, path: str
 ) -> None:
     response = anonymous.get(
-        "/api/auth/login", params={"page": "reset"}, follow_redirects=False
+        "/api/auth/login", params={"page": page}, follow_redirects=False
     )
     location = urlsplit(response.headers["location"])
-    assert (response.status_code, location.path) == (302, "/forgotPassword")
+    assert (response.status_code, location.path) == (302, path)
     assert parse_qs(location.query)["code_challenge_method"] == ["S256"]
     assert response.headers["set-cookie"].startswith(f"{auth.LOGIN_COOKIE}=")
     assert anonymous.get("/api/auth/login", params={"page": "x"}).status_code == 422

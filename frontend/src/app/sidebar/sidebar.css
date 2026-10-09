@@ -317,6 +317,12 @@ li.shown .price.low {
   font-style: italic;
 }
 
+/* No longer sold at its link: the owner should point it at the new listing */
+li.stale .name,
+li.stale .price {
+  color: var(--danger);
+}
+
 .empty {
   margin: 0;
   padding-top: 0.35rem;

@@ -1,0 +1,26 @@
+# UI on http://localhost:4200, the callback Cognito already allows for local runs.
+# Every service reads backend/.env, so they all use the database configured there.
+services:
+  api:
+    build: ./backend
+    image: price-tracker-backend
+    env_file: backend/.env
+    ports:
+      - "127.0.0.1:8000:8000"  # /docs, /health and /mcp; the UI goes through nginx
+    restart: unless-stopped
+
+  ui:
+    build: ./frontend
+    ports:
+      - "4200:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  scraper:
+    build: ./backend  # same image as api; the second build is all cache hits
+    image: price-tracker-backend
+    command: ["python", "-m", "app.scraper.run"]
+    env_file: backend/.env
+    init: true  # PID 1 would ignore docker stop's SIGTERM and wait to be killed
+    restart: unless-stopped

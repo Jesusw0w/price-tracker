@@ -98,6 +98,7 @@ async def test_list_trackers_gives_latest_price(
                 "currency": "EUR",
                 "price": 1100.0,
                 "price_date": TODAY.isoformat(),
+                "unavailable_since": None,
             }
         ]
     }
@@ -134,6 +135,7 @@ async def test_new_trackers_can_be_refreshed_once_per_cooldown(
         "currency": None,
         "price": None,
         "price_date": None,
+        "unavailable_since": None,
     }
     ids = {"product_ids": [new]}
     [status] = (await call(client, "get_refresh_status", ids))["result"]

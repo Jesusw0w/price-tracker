@@ -1,8 +1,6 @@
 import { Component, inject } from '@angular/core';
 import { Account } from '../account';
-
-// Shown on a public page; the pool is invite only, so this is how people ask
-const INVITE_EMAIL = 'owner@example.com';
+import { ProductStore } from '../products';
 
 @Component({
   selector: 'app-login',
@@ -10,34 +8,69 @@ const INVITE_EMAIL = 'owner@example.com';
     <section aria-labelledby="login-title">
       <div class="masthead">
         <span>Price Tracker</span>
-        <span>Invite only</span>
+        <span>{{ account.status() === 'pending' ? 'Awaiting approval' : 'Members only' }}</span>
       </div>
 
-      <div class="intro">
-        <h1 id="login-title">Sign in</h1>
-        <p>Price history for anything you track, from any online shop.</p>
-      </div>
+      @switch (account.status()) {
+        @case ('pending') {
+          <div class="intro">
+            <h1 id="login-title">Almost in</h1>
+            <p>
+              Thanks for signing up, {{ account.email() }}. Every new account is approved by hand,
+              and you can come in as soon as yours is.
+            </p>
+          </div>
+          <button type="button" class="primary" (click)="checkAgain()">
+            <span>Check again</span><span aria-hidden="true">↻</span>
+          </button>
+          <div class="lines">
+            <p class="line">
+              <span>Not you</span>
+              <span class="leader" aria-hidden="true"></span>
+              <button type="button" class="link" (click)="account.signOut()">Sign out</button>
+            </p>
+          </div>
+        }
+        @case ('rejected') {
+          <div class="intro">
+            <h1 id="login-title">No access</h1>
+            <p>{{ account.email() }} hasn't been given access to Price Tracker.</p>
+          </div>
+          <button type="button" class="primary" (click)="account.signOut()">
+            <span>Sign out</span><span aria-hidden="true">→</span>
+          </button>
+        }
+        @default {
+          <div class="intro">
+            <h1 id="login-title">Sign in</h1>
+            <p>Price history for anything you track, from any online shop.</p>
+          </div>
 
-      <button type="button" class="primary" (click)="account.signIn()">
-        <span>Sign in</span><span aria-hidden="true">→</span>
-      </button>
+          <button type="button" class="primary" (click)="account.signIn()">
+            <span>Sign in</span><span aria-hidden="true">→</span>
+          </button>
 
-      <div class="lines">
-        <p class="line">
-          <span>Forgot your password</span>
-          <span class="leader" aria-hidden="true"></span>
-          <button type="button" class="link" (click)="account.signIn('reset')">Reset</button>
-        </p>
-        <p class="line">
-          <span>No account yet</span>
-          <span class="leader" aria-hidden="true"></span>
-          <a [href]="inviteHref">Request access</a>
-        </p>
-      </div>
+          <div class="lines">
+            <p class="line">
+              <span>Forgot your password</span>
+              <span class="leader" aria-hidden="true"></span>
+              <button type="button" class="link" (click)="account.signIn('reset')">Reset</button>
+            </p>
+            <p class="line">
+              <span>No account yet</span>
+              <span class="leader" aria-hidden="true"></span>
+              <button type="button" class="link" (click)="account.signIn('signup')">
+                Create one
+              </button>
+            </p>
+          </div>
 
-      <p class="note">
-        Accounts are created by invite. Ask for one and you'll get an email to set your password.
-      </p>
+          <p class="note">
+            New accounts are approved by hand before they can track anything. You'll see your
+            dashboard as soon as yours is.
+          </p>
+        }
+      }
     </section>
   `,
   styles: `
@@ -141,15 +174,8 @@ const INVITE_EMAIL = 'owner@example.com';
       cursor: pointer;
     }
 
-    .link:hover,
-    a:hover {
+    .link:hover {
       text-decoration: underline;
-    }
-
-    a {
-      padding: 0.5rem 0;
-      color: var(--link);
-      text-decoration: none;
     }
 
     .note {
@@ -164,5 +190,11 @@ const INVITE_EMAIL = 'owner@example.com';
 })
 export class Login {
   protected readonly account = inject(Account);
-  protected readonly inviteHref = `mailto:${INVITE_EMAIL}?subject=${encodeURIComponent('Price Tracker access')}`;
+  private readonly store = inject(ProductStore);
+
+  // Products failed with 403 while waiting, so they reload along with the account
+  protected checkAgain(): void {
+    this.account.retry();
+    this.store.reload();
+  }
 }

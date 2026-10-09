@@ -37,6 +37,54 @@ def test_amazon_page() -> None:
     assert parse_page(ID, "amazon.es", html) == Scraped(ID, "RX 7900 XT", 116745, "EUR")
 
 
+def test_amazon_page_with_grouped_offers() -> None:
+    offers = {"desktop_buybox_group_1": [{"priceAmount": 1321.44}]}
+    html = soup(
+        "<title>RTX 5070 Ti : Amazon.es</title>"
+        '<div class="a-section aok-hidden twister-plus-buying-options-price-data">'
+        f"{json.dumps(offers)}</div>"
+    )
+    assert parse_page(ID, "amazon.es", html).price_cents == 132144
+
+
+def test_amazon_listing_without_an_offer_is_unavailable() -> None:
+    html = soup('<title>RX 7900 XT : Amazon.es</title><div id="outOfStock"></div>')
+    assert parse_page(ID, "amazon.es", html) == Scraped(
+        ID, "RX 7900 XT", None, "EUR", available=False
+    )
+
+
+@pytest.mark.parametrize(
+    ("page", "available"),
+    [
+        (
+            json_ld(
+                {
+                    "@type": "Product",
+                    "offers": {"availability": "https://schema.org/OutOfStock"},
+                }
+            ),
+            False,
+        ),
+        (
+            json_ld({"@type": "Product", "offers": {"availability": "Discontinued"}}),
+            False,
+        ),
+        ('<meta property="product:availability" content="out of stock">', False),
+        ('<meta property="product:availability" content="in stock">', True),
+        # A price wins over a stale availability flag
+        (
+            json_ld(
+                {"@type": "Product", "offers": {"price": 5, "availability": "SoldOut"}}
+            ),
+            True,
+        ),
+    ],
+)
+def test_availability_from_structured_data(page: str, available: bool) -> None:
+    assert parse_page(ID, "shop.example", soup(page)).available is available
+
+
 def test_amazon_captcha_is_a_block_not_a_missing_price() -> None:
     captcha = soup('<form action="/errors/validateCaptcha"></form>')
     assert is_blocked("amazon.es", captcha)
@@ -131,6 +179,26 @@ def test_rescrape_same_day_overwrites_and_missing_price_is_skipped(
     assert [(p.date, p.price_cents) for p in prices] == [(DAY, 99000)]
     product = session.get_one(ProductRow, ID)
     assert (product.name, product.currency) == ("RX 7900 XT", "EUR")
+
+
+def test_unavailable_since_marks_the_first_day_and_a_price_clears_it(
+    session: Session,
+) -> None:
+    session.add(
+        ProductRow(
+            id=ID, owner_id="u", url="https://shop.example/p/1", domain="shop.example"
+        )
+    )
+    session.commit()
+    gone = Scraped(ID, None, None, None, available=False)
+    later = DAY + datetime.timedelta(1)
+
+    save_data.save(session, [gone], DAY)
+    save_data.save(session, [gone], later)
+    assert session.get_one(ProductRow, ID).unavailable_since == DAY
+
+    save_data.save(session, [Scraped(ID, None, 100, None)], later)
+    assert session.get_one(ProductRow, ID).unavailable_since is None
 
 
 class FakeRaw:
