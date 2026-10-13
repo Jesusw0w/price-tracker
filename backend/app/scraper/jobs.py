@@ -70,7 +70,7 @@ def queue_daily(session: Session, now: datetime.datetime) -> int:
 
 def requeue_running(session: Session) -> None:
     """Put refreshes a killed scraper left ``running`` back in the queue."""
-    # ponytail: assumes one scraper process; several would need a claimed_at
+    # Assumes one scraper process; several would need a claimed_at
     # column and a timeout instead
     session.execute(
         update(RefreshRow)

@@ -28,7 +28,6 @@ class Settings(BaseSettings):
 
 
 def _load_settings() -> Settings:
-
     params = {
         field: name
         for field in _SSM_FIELDS

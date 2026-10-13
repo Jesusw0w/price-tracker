@@ -252,7 +252,7 @@ h1 {
     overflow-y: auto;
     overscroll-behavior: contain;
     border-right: 1px solid var(--grid);
-    background: rgb(13 18 21 / 0.97);
+    background: rgb(13 18 21);
     box-shadow: 0 0 40px rgb(0 0 0 / 0.6);
     text-shadow: none;
     transform: translateX(-100%);

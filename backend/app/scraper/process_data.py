@@ -47,7 +47,7 @@ def is_blocked(domain: str, html: BeautifulSoup) -> bool:
 
 def parse_page(product_id: int, domain: str, html: BeautifulSoup) -> Scraped:
     """Name, price and currency of one page; any of them is ``None`` if missing."""
-    if domain.startswith("amazon."):  # ponytail: a dict of parsers at the second site
+    if domain.startswith("amazon."):
         name, price, currency, unavailable = _amazon(domain, html)
     else:
         name, price, currency, unavailable = _structured(html)

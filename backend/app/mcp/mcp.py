@@ -7,7 +7,6 @@ There are no delete tools. Every tool uses the same service layer as /api, actin
 the owner (``settings.owner_sub``), the only user the MCP token stands for.
 """
 
-# Optional: is_a_good_deal, backed by Bedrock. | set_target_price
 from typing import Annotated
 
 from fastmcp import FastMCP
@@ -117,12 +116,6 @@ def add_tracker(url: str) -> ProductSummary:
             raise ToolError(str(e)) from e
 
 
-# @mcp.tool(annotations={"idempotentHint": True, "openWorldHint": False})
-# def set_target_price(product_id: ProductId, price: int) -> None:
-#     """Set a product's target price in cents."""
-#     pass
-
-
 @mcp.tool(
     annotations={
         "destructiveHint": False,
@@ -145,9 +138,3 @@ def request_refresh(product_ids: ProductIds) -> list[RefreshInfo]:
             return queue_refresh(session, settings.owner_sub, product_ids)
         except (UnknownProduct, NotTracked) as e:
             raise ToolError(str(e)) from e
-
-
-# @mcp.tool(annotations={"readOnlyHint": True})
-# def is_a_good_deal(product_id: ProductId) -> None:
-#     """Identify if a product is currently a good deal."""
-#     pass

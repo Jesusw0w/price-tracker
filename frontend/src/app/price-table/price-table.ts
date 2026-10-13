@@ -151,6 +151,25 @@ import { label, money, ProductStore, staleHint } from '../products';
     .pending {
       color: var(--muted);
     }
+    /* Highest and Above lowest: the table must fit a phone without sideways scrolling */
+    @media (max-width: 40rem) {
+      th,
+      td {
+        padding: 0.6rem 0.4rem;
+      }
+      tbody th {
+        white-space: normal;
+      }
+      .product {
+        max-width: none;
+      }
+      th:nth-child(4),
+      td:nth-child(4),
+      th:nth-child(5),
+      td:nth-child(5) {
+        display: none;
+      }
+    }
   `,
 })
 export class PriceTable {

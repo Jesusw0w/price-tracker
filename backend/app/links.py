@@ -90,8 +90,8 @@ def ensure_public(url: str) -> None:
         addresses = socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)
     except socket.gaierror as e:
         raise InvalidLink(f"Cannot resolve {host}") from e
-    # ponytail: checked before requests resolves again, so DNS rebinding in between
-    # still gets through; pin the IP in the connection if links ever come from others
+    # Known gap: requests resolves again after this check, so DNS rebinding in between
+    # still gets through; pinning the IP in the connection would close it
     for *_, sockaddr in addresses:
         if not ipaddress.ip_address(sockaddr[0]).is_global:
             raise InvalidLink(f"{host} resolves to a non-public address")

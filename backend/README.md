@@ -25,23 +25,25 @@ review the generated file in `migrations/versions/`, then `alembic upgrade head`
 Users sign in with a Cognito user pool, created by the stack. Anyone can create an account
 on Cognito's sign-up page, but only accounts the owner approves can use the app.
 
-- **Approval:** a first sign-in adds the user to `members` as `pending` (the owner,
-  `PT_OWNER_SUB`, is approved straight away). Pending and declined users see a waiting
-  screen, and every data route answers 403 for them. The owner sees an **Access requests**
-  button with the number waiting, and approves, declines or removes people there
-  (`/api/members`). The check runs on every request, so removing someone takes effect at once.
+A first sign-in adds the user to `members` as `pending`; the owner (`PT_OWNER_SUB`) is
+approved straight away. Pending and declined users see a waiting screen, and every data
+route answers 403 for them. The owner sees an **Access requests** button with the number
+waiting, and approves, declines or removes people there (`/api/members`). The check runs
+on every request, so removing someone takes effect at once.
 
-- **UI and `/api`:** `/api/auth/login` sends the browser to Cognito's hosted sign-in page.
-  Cognito redirects to `/api/auth/callback`, and the backend exchanges the code (with PKCE)
-  and stores a session in the `sessions` table. The browser holds only a random session id,
-  in an `HttpOnly`, `Secure`, `SameSite=Strict` cookie, so page scripts can't read it and
-  other sites can't send it. Sessions last `PT_SESSION_DAYS` (14). `/health` stays open.
-- **What users see:** your own products, plus products other users made public. Only the
-  owner can archive, delete or share a product. Products start private. Each user's groups,
-  dashboard picks and background are saved in `user_settings`.
-- **`/mcp`:** MCP clients can't do a browser login, so they still send
-  `Authorization: Bearer <PT_API_TOKEN>`. They act as the user `PT_OWNER_SUB`; leave it
-  empty to turn `/mcp` off. The token no longer opens `/api`.
+For the UI and `/api`, `/api/auth/login` sends the browser to Cognito's hosted sign-in
+page. Cognito redirects to `/api/auth/callback`, and the backend exchanges the code (with
+PKCE) and stores a session in the `sessions` table. The browser holds only a random session
+id, in an `HttpOnly`, `Secure`, `SameSite=Strict` cookie, so page scripts can't read it and
+other sites can't send it. Sessions last `PT_SESSION_DAYS` (14). `/health` stays open.
+
+Users see their own products plus products other users made public. Only a product's owner
+can archive, delete or share it, and products start private. Each user's groups, dashboard
+picks and background are saved in `user_settings`.
+
+MCP clients can't do a browser login, so `/mcp` takes `Authorization: Bearer <PT_API_TOKEN>`
+instead. The client acts as the user `PT_OWNER_SUB`; leave that empty to turn `/mcp` off.
+The token does not open `/api`.
 
 ```bash
 claude mcp add --transport http price-tracker <url>/mcp --header "Authorization: Bearer <token>"
@@ -101,7 +103,7 @@ reach works as the database.
 ### Adding sign-in to an existing deployment
 
 The migration needs an owner for the products that already exist. That owner is a Cognito
-user, and the pool comes from the deploy. So the order matters, and the API returns errors
+user, and the pool comes from the deploy. Run these steps in order; the API returns errors
 between the deploy and the migration:
 
 1. `uv run nox -s deploy`. This creates the user pool and ships the new code.
@@ -132,7 +134,7 @@ Notes on the build in `noxfile.py`:
 - `--refresh-package` makes uv rebuild this project. Without it, uv reuses its cached wheel
   until `pyproject.toml` changes, and code changes never reach the Lambda.
 - `run.sh` must keep LF line endings: check with `git ls-files --eol run.sh`.
-- The invalidation in `deploy_ui` matters: without it CloudFront keeps serving its cached
+- Without the invalidation in `deploy_ui`, CloudFront keeps serving its cached
   `index.html`, which points at bundles the sync just deleted.
 - In Git Bash on Windows, prefix the `aws ssm` commands with `MSYS_NO_PATHCONV=1`, or the
   parameter name is rewritten as a Windows path.

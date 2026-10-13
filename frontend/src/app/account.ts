@@ -56,7 +56,7 @@ export class Account {
     this.saveTimer = setTimeout(() => this.save(), SAVE_DELAY_MS);
   }
 
-  /** ``reset`` and ``signup`` open Cognito's own pages, which end in a sign-in too. */
+  /** `reset` and `signup` open Cognito's own pages, which end in a sign-in too. */
   signIn(page: 'login' | 'reset' | 'signup' = 'login'): void {
     this.location.assign(page === 'login' ? '/api/auth/login' : `/api/auth/login?page=${page}`);
   }
