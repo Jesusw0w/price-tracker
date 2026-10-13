@@ -1,0 +1,179 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Price tracker API and MCP server on one Lambda, UI on S3 behind CloudFront
+
+Parameters:
+    PublicUrl:
+        Type: String
+        Description: The UI's https URL without a trailing slash, i.e. the UiUrl output
+    OwnerSub:
+        Type: String
+        Default: ""
+        Description: Cognito sub of the user /mcp acts as; empty turns /mcp off
+
+Resources:
+    Api:
+        Type: AWS::Serverless::HttpApi
+        Properties:
+            DefaultRouteSettings:
+                ThrottlingBurstLimit: 10
+                ThrottlingRateLimit: 5
+    ApiFunction:
+        Type: AWS::Serverless::Function
+        Properties:
+            CodeUri: build/
+            Handler: run.sh
+            Runtime: python3.14
+            Architectures: [arm64]
+            MemorySize: 1024
+            Timeout: 29
+            Layers:
+                - !Sub arn:aws:lambda:${AWS::Region}:753240598075:layer:LambdaAdapterLayerArm64:30
+            Environment:
+                Variables:
+                    AWS_LAMBDA_EXEC_WRAPPER: /opt/bootstrap
+                    PORT: "8000"
+                    AWS_LWA_READINESS_CHECK_PATH: /health
+                    PT_DATABASE_URL_PARAM: /price-tracker/database-url
+                    PT_API_TOKEN_PARAM: /price-tracker/api-token
+                    PT_OWNER_SUB: !Ref OwnerSub
+                    PT_COGNITO_DOMAIN: !Sub ${UserPoolDomain}.auth.${AWS::Region}.amazoncognito.com
+                    PT_COGNITO_CLIENT_ID: !Ref UserPoolClient
+                    PT_COGNITO_USER_POOL_ID: !Ref UserPool
+                    PT_PUBLIC_URL: !Ref PublicUrl
+            Policies:
+                - SSMParameterReadPolicy:
+                    ParameterName: price-tracker/database-url
+                - SSMParameterReadPolicy:
+                    ParameterName: price-tracker/api-token
+                - Statement:  # the owner creating accounts from the app, nothing more
+                    - Effect: Allow
+                      Action: cognito-idp:AdminCreateUser
+                      Resource: !GetAtt UserPool.Arn
+            Events:
+                All:
+                    Type: HttpApi
+                    Properties:
+                        ApiId: !Ref Api
+    UserPool:
+        Type: AWS::Cognito::UserPool
+        DeletionPolicy: Retain  # deleting the stack must not delete everyone's account
+        UpdateReplacePolicy: Retain
+        Properties:
+            UserPoolName: !Sub ${AWS::StackName}-users
+            UserPoolTier: LITE  # the classic hosted UI is all this app uses
+            UsernameAttributes: [email]
+            AutoVerifiedAttributes: [email]
+            AdminCreateUserConfig:
+                # Anyone can sign up; the app keeps them out until the owner approves
+                AllowAdminCreateUserOnly: false
+            AccountRecoverySetting:
+                RecoveryMechanisms:
+                    - Name: verified_email
+                      Priority: 1
+            Policies:
+                PasswordPolicy:  # length over character rules, as NIST 800-63B advises
+                    MinimumLength: 12
+                    RequireLowercase: false
+                    RequireUppercase: false
+                    RequireNumbers: false
+                    RequireSymbols: false
+                    TemporaryPasswordValidityDays: 7
+    UserPoolDomain:
+        Type: AWS::Cognito::UserPoolDomain
+        Properties:
+            UserPoolId: !Ref UserPool
+            Domain: !Sub ${AWS::StackName}-${AWS::AccountId}  # prefixes are global
+            ManagedLoginVersion: 1
+    UserPoolClient:
+        Type: AWS::Cognito::UserPoolClient
+        Properties:
+            UserPoolId: !Ref UserPool
+            ClientName: web
+            # Public client: the backend proves the code is its own with PKCE, so there
+            # is no secret to store
+            GenerateSecret: false
+            AllowedOAuthFlowsUserPoolClient: true
+            AllowedOAuthFlows: [code]
+            AllowedOAuthScopes: [openid, email]
+            SupportedIdentityProviders: [COGNITO]
+            CallbackURLs:
+                - !Sub ${PublicUrl}/api/auth/callback
+                - http://localhost:4200/api/auth/callback  # npm start
+            LogoutURLs:
+                - !Sub ${PublicUrl}/
+                - http://localhost:4200/
+            PreventUserExistenceErrors: ENABLED
+    ApiLogs:
+        Type: AWS::Logs::LogGroup
+        Properties:
+            LogGroupName: !Sub /aws/lambda/${ApiFunction}
+            RetentionInDays: 7
+    UiBucket:
+        Type: AWS::S3::Bucket
+    UiOriginAccess:
+        Type: AWS::CloudFront::OriginAccessControl
+        Properties:
+            OriginAccessControlConfig:
+                Name: !Sub ${AWS::StackName}-ui
+                OriginAccessControlOriginType: s3
+                SigningBehavior: always
+                SigningProtocol: sigv4
+    UiBucketPolicy:
+        Type: AWS::S3::BucketPolicy
+        Properties:
+            Bucket: !Ref UiBucket
+            PolicyDocument:
+                Statement:
+                    - Effect: Allow
+                      Principal:
+                          Service: cloudfront.amazonaws.com
+                      Action: s3:GetObject
+                      Resource: !Sub ${UiBucket.Arn}/*
+                      Condition:  # only this distribution may read the bucket
+                          StringEquals:
+                              AWS:SourceArn: !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/${Cdn}
+    Cdn:
+        Type: AWS::CloudFront::Distribution
+        Properties:
+            DistributionConfig:
+                Enabled: true
+                DefaultRootObject: index.html
+                PriceClass: PriceClass_100
+                Origins:
+                    - Id: ui
+                      DomainName: !GetAtt UiBucket.RegionalDomainName
+                      OriginAccessControlId: !GetAtt UiOriginAccess.Id
+                      S3OriginConfig:
+                          OriginAccessIdentity: ""
+                    - Id: api
+                      DomainName: !Sub ${Api}.execute-api.${AWS::Region}.${AWS::URLSuffix}
+                      CustomOriginConfig:
+                          OriginProtocolPolicy: https-only
+                DefaultCacheBehavior:
+                    TargetOriginId: ui
+                    ViewerProtocolPolicy: redirect-to-https
+                    CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6  # CachingOptimized
+                    Compress: true
+                CacheBehaviors:
+                    - PathPattern: /api/*
+                      TargetOriginId: api
+                      ViewerProtocolPolicy: https-only
+                      AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
+                      CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad  # CachingDisabled: responses depend on the session
+                      OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac  # AllViewerExceptHostHeader: forwards cookies, API Gateway needs its own Host
+Outputs:
+    Url:
+        Value: !Sub https://${Api}.execute-api.${AWS::Region}.${AWS::URLSuffix}/
+    UiUrl:
+        Value: !Sub https://${Cdn.DomainName}/
+    UiBucketName:
+        Value: !Ref UiBucket
+    CdnId:
+        Value: !Ref Cdn
+    UserPoolId:
+        Value: !Ref UserPool
+    CognitoDomain:
+        Value: !Sub ${UserPoolDomain}.auth.${AWS::Region}.amazoncognito.com
+    CognitoClientId:
+        Value: !Ref UserPoolClient

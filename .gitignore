@@ -9,6 +9,8 @@ __pycache__/
 # VsCode
 *.DS_Store
 *.iml
+.idea/
+.vscode/settings.json
 *.xml
 
 # Distribution / packaging
@@ -134,4 +136,14 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
+.drafts/
 
+backend/requirements.txt
+
+# Personal deployment values; the first `sam deploy --guided` writes it
+backend/samconfig.toml
+# Third-party artwork, kept local only
+frontend/public/backgrounds/*.webp
+frontend/public/backgrounds/*.avif
+frontend/public/backgrounds/*.jpg
+frontend/public/backgrounds/*.png

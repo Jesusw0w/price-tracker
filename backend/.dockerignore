@@ -1,0 +1,16 @@
+# Secrets reach containers through compose's env_file, never through the image
+.env
+.venv
+.nox
+.mypy_cache
+.pytest_cache
+.ruff_cache
+**/__pycache__
+build
+events
+tests
+noxfile.py
+requirements.txt
+run.sh
+samconfig.toml
+template.yaml

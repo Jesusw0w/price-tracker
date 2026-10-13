@@ -1,0 +1,363 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.masthead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 0.9rem;
+  border-bottom: 1px dashed var(--rule);
+}
+
+.title {
+  margin: 0;
+  font-family: var(--sans);
+  font-size: 1.125rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.count,
+.dim {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.eyebrow {
+  font-size: 0.6875rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Track a product */
+.add {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.add .row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+#link {
+  flex: 1;
+  min-width: 0;
+  min-height: 2.5rem;
+  padding: 0 0.75rem;
+  border: 1px solid rgb(203 213 219 / 0.25);
+  border-radius: 4px;
+  background: var(--field);
+  color: var(--ink);
+  font: inherit;
+}
+
+#link::placeholder,
+.search input::placeholder {
+  color: var(--muted);
+}
+
+#link:focus-visible {
+  border-color: var(--link);
+  outline-offset: 0;
+}
+
+#link[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+.add-button {
+  min-height: 2.5rem;
+  padding: 0 0.9rem;
+  border: 1px solid var(--ink);
+  border-radius: 4px;
+  background: var(--ink);
+  color: var(--page);
+  font: inherit;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-shadow: none;
+  cursor: pointer;
+}
+
+.add-button:hover:not(:disabled) {
+  background: #fff;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.help {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.help.error {
+  color: var(--danger);
+}
+
+/* Filters: plain text controls */
+.plain {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.plain:hover {
+  color: var(--ink);
+}
+
+.plain.link {
+  color: var(--link);
+}
+
+.filters {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.25rem;
+  border-bottom: 1px solid var(--rule);
+  color: var(--muted);
+}
+
+.search:focus-within {
+  border-bottom-color: var(--link);
+}
+
+.search input {
+  flex: 1;
+  min-width: 0;
+  min-height: 2.25rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  outline: none;
+}
+
+.search input::-webkit-search-cancel-button {
+  filter: invert(0.6);
+}
+
+.search .plain {
+  min-height: 2.25rem;
+  white-space: nowrap;
+}
+
+.flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1rem;
+}
+
+.flag {
+  min-height: 2rem;
+}
+
+.flag .box {
+  white-space: pre;
+}
+
+.flag[aria-pressed='true'] {
+  color: var(--ink);
+}
+
+/* Groups and rows */
+.groups {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.group-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.group-toggle {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+  min-height: 2rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-align: left;
+}
+
+button.group-toggle {
+  cursor: pointer;
+}
+
+.group-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rule {
+  flex: 1;
+  min-width: 1rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+.sign {
+  width: 0.75rem;
+  color: var(--muted);
+  text-align: center;
+}
+
+button.group-toggle:hover .sign {
+  color: var(--ink);
+}
+
+ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-height: 1.9rem;
+  padding-top: 0.35rem;
+}
+
+li label {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  min-width: 0;
+  cursor: pointer;
+}
+
+li .tick {
+  transform: translateY(0.1rem);
+}
+
+.name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+}
+
+li.shown .name {
+  color: var(--ink);
+}
+
+.leader {
+  flex: 1;
+  min-width: 0.75rem;
+  border-bottom: 1px dotted var(--leader);
+  transform: translateY(-0.2rem);
+}
+
+.price {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+li.shown .price {
+  color: var(--ink);
+}
+
+.price.low,
+li.shown .price.low {
+  color: var(--good-text);
+}
+
+.price.pending {
+  font-style: italic;
+}
+
+/* No longer sold at its link: the owner should point it at the new listing */
+li.stale .name,
+li.stale .price {
+  color: var(--danger);
+}
+
+.empty {
+  margin: 0;
+  padding-top: 0.35rem;
+  color: var(--muted);
+}
+
+/* Room to drop into an empty group */
+ul.cdk-drop-list {
+  min-height: 1.75rem;
+}
+
+.grip {
+  display: grid;
+  flex: none;
+  place-items: center;
+  align-self: center;
+  color: var(--muted);
+  cursor: grab;
+  touch-action: none;
+}
+
+.grip svg {
+  width: 0.9rem;
+  height: 0.9rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+}
+
+li:not(:hover, :focus-within) .grip {
+  opacity: 0;
+}
+
+@media (hover: none) {
+  li .grip {
+    opacity: 0.5;
+  }
+}
