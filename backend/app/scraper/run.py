@@ -21,11 +21,11 @@ from app.links import InvalidLink
 from app.logs import setup_logging
 from app.scraper import jobs
 from app.scraper.jobs import Job
-from app.scraper.load_data import FetchError, fetch
+from app.scraper.load_data import Blocked, FetchError, fetch
 from app.scraper.process_data import Scraped, is_blocked, parse_page
 
-# Gap between two requests to the same site, to stay under bot detection
-REQUEST_GAP_S: Final[int] = 2
+# Gap between two requests to the same site; Amazon answers 2 s bursts with captchas
+REQUEST_GAP_S: Final[int] = 20
 POLL_S: Final[int] = 60
 BATCH: Final[int] = 50
 
@@ -42,20 +42,43 @@ def scrape(product_id: int, url: str, domain: str) -> Scraped:
     """
     html = BeautifulSoup(fetch(url), "html.parser")
     if is_blocked(domain, html):
-        raise FetchError(f"Blocked by {domain} (captcha)")
+        raise Blocked(f"Blocked by {domain} (captcha)")
     return parse_page(product_id, domain, html)
+
+
+def _describe(scraped: Scraped) -> str:
+    if not scraped.available:
+        return "not available"
+    if scraped.price_cents is None:
+        return "no price found"
+    return f"{scraped.price_cents / 100:.2f} {scraped.currency or ''}".rstrip()
 
 
 def scrape_site(site_jobs: list[Job]) -> list[tuple[Job, Scraped | Exception]]:
     """Scrape one site's pages in turn, spaced out; failures come back as values."""
+    total = len(site_jobs)
+    log.info(
+        "%s: %d pages, about %d min",
+        site_jobs[0].domain,
+        total,
+        round((total - 1) * REQUEST_GAP_S / 60),
+    )
     outcomes: list[tuple[Job, Scraped | Exception]] = []
     for i, job in enumerate(site_jobs):
         if i:
             time.sleep(REQUEST_GAP_S)
+        progress = f"{job.domain} {i + 1}/{total} ({(i + 1) * 100 // total}%)"
         try:
-            outcomes.append((job, scrape(job.product_ids[0], job.url, job.domain)))
+            scraped = scrape(job.product_ids[0], job.url, job.domain)
+            log.info("%s %s: %s", progress, job.url, _describe(scraped))
+            outcomes.append((job, scraped))
+        except Blocked as e:
+            # More requests only prolong the block, so fail the rest without fetching
+            log.warning("%s %s; skipping the rest", progress, e)
+            outcomes.extend((rest, e) for rest in site_jobs[i:])
+            break
         except (InvalidLink, FetchError, requests.RequestException) as e:
-            log.warning("Failed %s: %s", job.url, e)
+            log.warning("%s %s failed: %s", progress, job.url, e)
             outcomes.append((job, e))
     return outcomes
 
@@ -66,6 +89,7 @@ def drain_batch(pool: Executor) -> int:
     Returns:
         How many pages were claimed; 0 means the queue is empty.
     """
+    start = time.monotonic()
     with SessionLocal() as session:
         claimed = jobs.claim(session, BATCH)
     by_site: dict[str, list[Job]] = defaultdict(list)
@@ -74,17 +98,26 @@ def drain_batch(pool: Executor) -> int:
 
     # Threads only fetch and parse; every database write stays on this thread
     futures = [pool.submit(scrape_site, site_jobs) for site_jobs in by_site.values()]
+    failed = 0
     for future in as_completed(futures):
         now = datetime.datetime.now(datetime.UTC)
         with SessionLocal() as session:
             for job, outcome in future.result():
+                failed += isinstance(outcome, Exception)
                 jobs.finish(session, job, outcome, now)
     if claimed:
-        log.info("Scraped %d pages from %d sites", len(claimed), len(by_site))
+        log.info(
+            "Scraped %d of %d pages from %d sites in %.0f s",
+            len(claimed) - failed,
+            len(claimed),
+            len(by_site),
+            time.monotonic() - start,
+        )
     return len(claimed)
 
 
 def run(*, once: bool) -> None:
+    log.info("Scraper started, polling every %d s", POLL_S)
     with SessionLocal() as session:
         jobs.requeue_running(session)
     with ThreadPoolExecutor(settings.scrape_workers) as pool:

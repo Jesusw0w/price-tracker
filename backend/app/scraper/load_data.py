@@ -1,3 +1,4 @@
+import threading
 from typing import Final
 from urllib.parse import urljoin
 
@@ -13,12 +14,27 @@ HEADERS: Final[dict[str, str]] = {
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/141.0.0.0 Safari/537.36"
     ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
 }
+_local = threading.local()
 
 
 class FetchError(Exception):
     pass
+
+
+class Blocked(FetchError):
+    pass
+
+
+def _session() -> requests.Session:
+    # Not thread-safe, so one per worker thread; kept so the site's cookies persist
+    if not hasattr(_local, "session"):
+        _local.session = requests.Session()
+        _local.session.headers.update(HEADERS)
+    session: requests.Session = _local.session
+    return session
 
 
 def fetch(url: str) -> bytes:
@@ -32,8 +48,8 @@ def fetch(url: str) -> bytes:
     for _ in range(MAX_REDIRECTS + 1):
         # Redirects are followed by hand so every hop is checked, not just the first
         ensure_public(url)
-        with requests.get(
-            url, headers=HEADERS, timeout=TIMEOUT_S, allow_redirects=False, stream=True
+        with _session().get(
+            url, timeout=TIMEOUT_S, allow_redirects=False, stream=True
         ) as response:
             if response.is_redirect:
                 url = urljoin(url, response.headers["location"])

@@ -238,7 +238,7 @@ def web(monkeypatch: pytest.MonkeyPatch) -> list[FakeResponse]:
 
     responses: list[FakeResponse] = []
     monkeypatch.setattr(socket, "getaddrinfo", getaddrinfo)
-    monkeypatch.setattr(requests, "get", lambda *_, **__: responses.pop(0))
+    monkeypatch.setattr(requests.Session, "get", lambda *_, **__: responses.pop(0))
     return responses
 
 

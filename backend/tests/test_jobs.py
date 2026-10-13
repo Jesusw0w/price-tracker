@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.db.models import PriceRow, ProductRow, RefreshRow
 from app.scraper import jobs, run
 from app.scraper.jobs import Job
-from app.scraper.load_data import FetchError
+from app.scraper.load_data import Blocked, FetchError
 from app.scraper.process_data import Scraped
 
 NOW: Final[datetime.datetime] = datetime.datetime(2026, 10, 9, 7, tzinfo=datetime.UTC)
@@ -143,3 +143,43 @@ def test_drain_batch_scrapes_and_saves_every_site(
         assert run.drain_batch(pool) == 0
 
     assert statuses(session) == {1: "done", 2: "failed"}
+
+
+def test_a_captcha_fails_the_rest_of_the_site_without_fetching(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fetched: list[str] = []
+
+    def scrape(product_id: int, url: str, domain: str) -> Scraped:
+        fetched.append(url)
+        raise Blocked("Blocked by shop.example (captcha)")
+
+    monkeypatch.setattr(run, "scrape", scrape)
+    monkeypatch.setattr(run, "REQUEST_GAP_S", 0)
+    site_jobs = [Job((i,), f"{GPU}/{i}", "shop.example") for i in range(3)]
+
+    outcomes = run.scrape_site(site_jobs)
+
+    assert fetched == [f"{GPU}/0"]
+    assert [job for job, _ in outcomes] == site_jobs
+    assert all(isinstance(e, Blocked) for _, e in outcomes)
+
+
+def test_scrape_site_logs_progress_and_price(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    def scrape(product_id: int, url: str, domain: str) -> Scraped:
+        if product_id == 2:
+            raise FetchError("HTTP 503")
+        return Scraped(product_id, "GPU", 90800, "EUR")
+
+    monkeypatch.setattr(run, "scrape", scrape)
+    monkeypatch.setattr(run, "REQUEST_GAP_S", 0)
+    caplog.set_level("INFO")
+
+    run.scrape_site([Job((i,), f"{GPU}/{i}", "shop.example") for i in (1, 2)])
+
+    assert caplog.messages[1:] == [
+        f"shop.example 1/2 (50%) {GPU}/1: 908.00 EUR",
+        f"shop.example 2/2 (100%) {GPU}/2 failed: HTTP 503",
+    ]
